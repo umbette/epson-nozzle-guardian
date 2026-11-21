@@ -11,12 +11,9 @@ Eliminates dried ink printhead nozzle clogs on Epson EcoTank printers by monitor
 
 ---
 
-## Why Epson Nozzle Guardian?
+## Architecture Principles: 100% Local-First & Zero-Trust
 
-Standard community approaches either run blind schedulers (wasting ink on channels you already used) or force heavy CUPS driver stacks and destructive hardware cleanings that flood your printer's waste pad. 
-
-Epson Nozzle Guardian introduces:
-
+* **Zero Cloud Dependencies:** Completely standalone. No dynamic remote feeds, no telemetry callbacks, and zero external tracking.
 * **Decoupled Channel Tracking:** Monitors Black & White and Color page counts separately via printer Web Config and IPP job telemetry.
 * **Targeted Micro-Patterns:**
   * **CMY Only:** Fires only Cyan, Magenta, and Yellow (100% Black ink preserved).
@@ -25,15 +22,14 @@ Epson Nozzle Guardian introduces:
 * **Waste & Paper Efficiency:** Micro-stripes are only 3 mm high on the top margin of an A4 page ($< 0.02\text{ ml}$ ink). You can reuse the exact same scrap paper sheet in the rear feeder dozens of times.
 * **Native Driverless IPP:** Sends `image/pwg-raster` directly over IPPS (port 631) without needing CUPS or proprietary PPD drivers.
 * **Home Assistant Package:** Out-of-the-box actionable notifications with one-tap execution buttons (`[Purge Colors]`, `[Purge Black]`, `[Full Purge]`, `[Snooze 24h]`).
-* **Automated Community Support:** An automated bot triages compatibility reports and generates pull requests for newly tested printer models.
 
 ---
 
 ## Hardware Compatibility
 
-See [COMPATIBILITY.md](COMPATIBILITY.md) for tested models. 
+See [COMPATIBILITY.md](COMPATIBILITY.md) for tested models.
 * ✅ **Epson EcoTank ET-2810, ET-2814, ET-2820, ET-2850, ET-4800, L3150 series**
-* 🧪 Community test reports are welcome and automatically tracked!
+* Works with any IPP/PWG-Raster compatible network inkjet printer.
 
 ---
 
@@ -65,12 +61,10 @@ The REST API is now running at `http://localhost:8086`.
 
 ---
 
-## Contributing & Automated Issue Resolution
+## Contributing
 
-We welcome all community members to test and improve Epson Nozzle Guardian!
-- Check [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines.
-- Submit printer compatibility reports using our issue templates.
-- Our automated GitHub Actions bot (`/auto-fix` / `/implement`) verifies community contributions and assists in automated PR creation!
+We welcome community feedback, pull requests, and verified hardware reports!
+- Check [CONTRIBUTING.md](CONTRIBUTING.md) for details on submitting standard PRs and tested models.
 
 ---
 
