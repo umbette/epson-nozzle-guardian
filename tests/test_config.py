@@ -1,6 +1,4 @@
-import os
-import pytest
-from src.config import Settings, PrinterConfig, PatternConfig
+from src.config import Settings
 
 def test_default_config():
     settings = Settings()

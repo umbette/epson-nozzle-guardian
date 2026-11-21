@@ -106,7 +106,7 @@ class PatternGenerator:
 
         try:
             with open(pwg_path, "wb") as f_out:
-                result = subprocess.run(cmd, stdout=f_out, stderr=subprocess.PIPE, check=True)
+                subprocess.run(cmd, stdout=f_out, stderr=subprocess.PIPE, check=True)
             logger.info(f"Successfully compiled PWG-Raster ({color_model}): {pwg_path} ({pwg_path.stat().st_size} bytes)")
             return pwg_path
         except (subprocess.SubprocessError, FileNotFoundError) as e:
