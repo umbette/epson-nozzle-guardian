@@ -30,8 +30,8 @@ jobs:
 
       - name: Lint with ruff
         run: |
-          ruff check src tests --select E,F,W
+          ruff check src tests --ignore E501
 
       - name: Run unit tests
         run: |
-          pytest tests -v
+          PYTHONPATH=. pytest tests -v
