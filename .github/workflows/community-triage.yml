@@ -1,0 +1,70 @@
+name: Community Triage & Hardware Matrix
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  issues: write
+
+jobs:
+  triage_issue:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Triage Hardware Report
+        if: contains(github.event.issue.labels.*.name, 'hardware-compatibility')
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issueBody = context.payload.issue.body || '';
+            const isWorking = issueBody.includes('Working Perfectly');
+            
+            let comment = `### 👋 Grazie per il tuo contributo alla matrice hardware!\n\n`;
+            if (isWorking) {
+              comment += `Il report per questo modello è stato registrato come **funzionante** ed è stato accodato per l'inclusione automatica in \`COMPATIBILITY.md\`.\n\n`;
+              comment += `Grazie a contributi come il tuo, la community di utenti Epson EcoTank può stampare in sicurezza senza spreco di inchiostro. 🖨️✨`;
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.issue.number,
+                labels: ['verified-hardware', 'community-triage']
+              });
+            } else {
+              comment += `Abbiamo ricevuto la segnalazione di problemi o particolarità con questo modello. Un maintainer o lo script di diagnostica esaminerà i dettagli della connessione IPP e della risposta CUPS raster per valutare eventuali correzioni o workaround.`;
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.issue.number,
+                labels: ['hardware-investigation', 'community-triage']
+              });
+            }
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+              body: comment
+            });
+
+      - name: Welcome General Issues
+        if: "!contains(github.event.issue.labels.*.name, 'hardware-compatibility')"
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const comment = `### 👋 Grazie per aver aperto questa issue!\n\n` +
+              `Questo è un progetto open-source mantenuto e integrato con automazione continua.\n\n` +
+              `* Se si tratta di un bug, assicurati di aver incluso i log del container (\`docker logs epson-guardian\`) e il modello esatto della stampante.\n` +
+              `* Se si tratta di una proposta di miglioramento, la community e gli script di triage la valuteranno al prossimo ciclo di rilascio.`;
+            
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+              labels: ['needs-review']
+            });
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+              body: comment
+            });
