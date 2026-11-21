@@ -16,7 +16,9 @@ COLOR_WHITE = (255, 255, 255)
 
 
 class PatternGenerator:
-    def __init__(self, assets_dir: str = "assets"):
+    def __init__(self, *args, assets_dir: str = "assets", **kwargs):
+        if args and isinstance(args[0], (str, Path)):
+            assets_dir = str(args[0])
         self.assets_dir = Path(assets_dir)
         self.assets_dir.mkdir(parents=True, exist_ok=True)
         self.dpi = settings.pattern.dpi
@@ -117,3 +119,23 @@ class PatternGenerator:
         """Ensures all 3 purge patterns (k, cmy, cmyk) are pre-rendered."""
         for mode in ("k", "cmy", "cmyk"):
             self.compile_pwg(mode)
+
+    def get_pwg_path(self, mode: str) -> Path:
+        return self.assets_dir / f"purge_{mode}.pwg"
+
+    def get_png_path(self, mode: str) -> Path:
+        return self.assets_dir / f"purge_{mode}.png"
+
+    def generate_k_pattern_png(self) -> Path:
+        return self.generate_png("k")
+
+    def generate_cmy_pattern_png(self) -> Path:
+        return self.generate_png("cmy")
+
+    def generate_cmyk_pattern_png(self) -> Path:
+        return self.generate_png("cmyk")
+
+
+# Backwards compatibility alias
+PurgePatternGenerator = PatternGenerator
+
