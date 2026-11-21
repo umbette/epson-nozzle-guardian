@@ -1,0 +1,13 @@
+printer:
+  host: "192.168.1.181"
+  port: 631
+  timeout_sec: 3.0
+  inactivity_threshold_days: 5
+  use_tls: true
+
+pattern:
+  dpi: 300
+  stripe_height_mm: 3.0
+  stripe_spacing_mm: 1.0
+  top_margin_mm: 10.0
+  margin_side_mm: 15.0

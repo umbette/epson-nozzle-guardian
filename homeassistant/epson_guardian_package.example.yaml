@@ -1,0 +1,328 @@
+# ==============================================================================
+# Home Assistant Package: Epson Nozzle Guardian
+# Place in: /config/packages/epson_guardian_package.yaml
+# Ensure 'packages: !include_dir_named packages' is present in configuration.yaml
+# ==============================================================================
+
+input_datetime:
+  epson_last_print_bw:
+    name: "Epson - Ultima Stampa B/N"
+    has_date: true
+    has_time: true
+    icon: mdi:printer-outline
+
+  epson_last_print_color:
+    name: "Epson - Ultima Stampa Colore"
+    has_date: true
+    has_time: true
+    icon: mdi:printer-eye
+
+  epson_guardian_snooze_until:
+    name: "Epson Guardian - Posticipa Fino A"
+    has_date: true
+    has_time: true
+    icon: mdi:clock-alert-outline
+
+input_number:
+  epson_last_counter_bw:
+    name: "Epson - Ultimo Contatore B/N"
+    min: 0
+    max: 1000000
+    step: 1
+    mode: box
+
+  epson_last_counter_color:
+    name: "Epson - Ultimo Contatore Colore"
+    min: 0
+    max: 1000000
+    step: 1
+    mode: box
+
+rest_command:
+  epson_purge_cmy:
+    url: "http://127.0.0.1:8086/purge/cmy"
+    method: "POST"
+    headers:
+      Content-Type: "application/json"
+
+  epson_purge_k:
+    url: "http://127.0.0.1:8086/purge/k"
+    method: "POST"
+    headers:
+      Content-Type: "application/json"
+
+  epson_purge_cmyk:
+    url: "http://127.0.0.1:8086/purge/cmyk"
+    method: "POST"
+    headers:
+      Content-Type: "application/json"
+
+sensor:
+  - platform: rest
+    name: "Epson Guardian Status"
+    resource: "http://127.0.0.1:8086/status"
+    scan_interval: 300 # Polls every 5 minutes
+    timeout: 8
+    json_attributes:
+      - online
+      - monochrome_pages
+      - color_pages
+      - total_pages
+      - state
+    value_template: "{{ value_json.state if value_json.online else 'offline' }}"
+
+template:
+  - sensor:
+      - name: "Epson Pagine B/N"
+        unique_id: epson_guardian_mono_pages
+        state: "{{ state_attr('sensor.epson_guardian_status', 'monochrome_pages') | default(0, true) | int }}"
+        icon: mdi:counter
+
+      - name: "Epson Pagine Colori"
+        unique_id: epson_guardian_color_pages
+        state: "{{ state_attr('sensor.epson_guardian_status', 'color_pages') | default(0, true) | int }}"
+        icon: mdi:palette-outline
+
+      - name: "Giorni da Ultima Stampa B/N"
+        unique_id: epson_days_since_bw
+        unit_of_measurement: "giorni"
+        state: >-
+          {% set last = states('input_datetime.epson_last_print_bw') %}
+          {% if last not in ['unknown', 'unavailable', ''] %}
+            {{ ((as_timestamp(now()) - as_timestamp(last)) / 86400) | round(1) }}
+          {% else %}
+            0
+          {% endif %}
+        icon: mdi:calendar-clock
+
+      - name: "Giorni da Ultima Stampa Colori"
+        unique_id: epson_days_since_color
+        unit_of_measurement: "giorni"
+        state: >-
+          {% set last = states('input_datetime.epson_last_print_color') %}
+          {% if last not in ['unknown', 'unavailable', ''] %}
+            {{ ((as_timestamp(now()) - as_timestamp(last)) / 86400) | round(1) }}
+          {% else %}
+            0
+          {% endif %}
+        icon: mdi:calendar-alert
+
+automation:
+  # --------------------------------------------------------------------------
+  # 1. Update Last Print Timestamps when Counters Increase
+  # --------------------------------------------------------------------------
+  - id: epson_guardian_track_usage
+    alias: "Epson Guardian: Rileva Nuova Stampa e Aggiorna Date"
+    trigger:
+      - platform: state
+        entity_id: sensor.epson_pagine_b_n
+      - platform: state
+        entity_id: sensor.epson_pagine_colori
+    condition:
+      - condition: template
+        value_template: "{{ trigger.from_state is not none and trigger.to_state is not none }}"
+    action:
+      - choose:
+          # B/W Counter Increased
+          - conditions:
+              - condition: template
+                value_template: "{{ (states('sensor.epson_pagine_b_n') | int) > (states('input_number.epson_last_counter_bw') | int) }}"
+            sequence:
+              - action: input_datetime.set_datetime
+                target:
+                  entity_id: input_datetime.epson_last_print_bw
+                data:
+                  timestamp: "{{ as_timestamp(now()) }}"
+              - action: input_number.set_value
+                target:
+                  entity_id: input_number.epson_last_counter_bw
+                data:
+                  value: "{{ states('sensor.epson_pagine_b_n') | int }}"
+
+      - choose:
+          # Color Counter Increased
+          - conditions:
+              - condition: template
+                value_template: "{{ (states('sensor.epson_pagine_colori') | int) > (states('input_number.epson_last_counter_color') | int) }}"
+            sequence:
+              - action: input_datetime.set_datetime
+                target:
+                  entity_id: input_datetime.epson_last_print_color
+                data:
+                  timestamp: "{{ as_timestamp(now()) }}"
+              - action: input_number.set_value
+                target:
+                  entity_id: input_number.epson_last_counter_color
+                data:
+                  value: "{{ states('sensor.epson_pagine_colori') | int }}"
+
+  # --------------------------------------------------------------------------
+  # 2. Daily Health Check (10:30 AM) & Actionable Mobile Push Notification
+  # --------------------------------------------------------------------------
+  - id: epson_guardian_daily_evaluation
+    alias: "Epson Guardian: Controllo Quotidiano Ugelli"
+    trigger:
+      - platform: time
+        at: "10:30:00"
+    condition:
+      # Check that snooze is not active
+      - condition: template
+        value_template: >-
+          {% set snooze = states('input_datetime.epson_guardian_snooze_until') %}
+          {{ snooze in ['unknown', 'unavailable', ''] or as_timestamp(now()) > as_timestamp(snooze) }}
+    action:
+      - choose:
+          # Scenario A: Printer Offline
+          - conditions:
+              - condition: state
+                entity_id: sensor.epson_guardian_status
+                state: "offline"
+              - condition: template
+                value_template: "{{ (states('sensor.giorni_da_ultima_stampa_colori') | float(0) >= 5) or (states('sensor.giorni_da_ultima_stampa_b_n') | float(0) >= 5) }}"
+            sequence:
+              - action: notify.mobile_app_YOUR_PHONE_NAME
+                data:
+                  title: "⚠️ Epson ET-2814 Offline"
+                  message: "La stampante è spenta e non stampa da oltre 5 giorni. Accendila per prevenire l'ostruzione degli ugelli."
+                  data:
+                    tag: "epson-guardian-offline"
+
+          # Scenario B: Both Channels Idle (Full CMYK Purge)
+          - conditions:
+              - condition: state
+                entity_id: sensor.epson_guardian_status
+                state: "idle"
+              - condition: numeric_state
+                entity_id: sensor.giorni_da_ultima_stampa_b_n
+                above: 4.9
+              - condition: numeric_state
+                entity_id: sensor.giorni_da_ultima_stampa_colori
+                above: 4.9
+            sequence:
+              - action: notify.mobile_app_YOUR_PHONE_NAME
+                data:
+                  title: "⚠️ Epson: Rischio Ugelli Completo (CMYK)"
+                  message: "Nessuna stampa negli ultimi 5 giorni (sia B/N che Colori). Eseguo spurgo completo su foglio di scarto?"
+                  data:
+                    tag: "epson-guardian-purge"
+                    actions:
+                      - action: "EPSON_PURGE_CMYK"
+                        title: "🖨️ Spurgo Completo"
+                      - action: "EPSON_SNOOZE_24H"
+                        title: "⏳ Posticipa 24h"
+
+          # Scenario C: Only Color Idle (Targeted CMY Purge)
+          - conditions:
+              - condition: state
+                entity_id: sensor.epson_guardian_status
+                state: "idle"
+              - condition: numeric_state
+                entity_id: sensor.giorni_da_ultima_stampa_colori
+                above: 4.9
+              - condition: numeric_state
+                entity_id: sensor.giorni_da_ultima_stampa_b_n
+                below: 5.0
+            sequence:
+              - action: notify.mobile_app_YOUR_PHONE_NAME
+                data:
+                  title: "⚠️ Epson: Ugelli Colore a Rischio"
+                  message: "Hai stampato in B/N di recente, ma i colori sono inattivi da {{ states('sensor.giorni_da_ultima_stampa_colori') }} giorni. Eseguo spurgo mirato CMY?"
+                  data:
+                    tag: "epson-guardian-purge"
+                    actions:
+                      - action: "EPSON_PURGE_CMY"
+                        title: "🎨 Spurgo solo Colori"
+                      - action: "EPSON_SNOOZE_24H"
+                        title: "⏳ Posticipa 24h"
+
+          # Scenario D: Only B/W Idle (Targeted K Purge)
+          - conditions:
+              - condition: state
+                entity_id: sensor.epson_guardian_status
+                state: "idle"
+              - condition: numeric_state
+                entity_id: sensor.giorni_da_ultima_stampa_b_n
+                above: 4.9
+              - condition: numeric_state
+                entity_id: sensor.giorni_da_ultima_stampa_colori
+                below: 5.0
+            sequence:
+              - action: notify.mobile_app_YOUR_PHONE_NAME
+                data:
+                  title: "⚠️ Epson: Ugello Nero a Rischio"
+                  message: "L'ugello del nero è inattivo da {{ states('sensor.giorni_da_ultima_stampa_b_n') }} giorni. Eseguo spurgo mirato Nero?"
+                  data:
+                    tag: "epson-guardian-purge"
+                    actions:
+                      - action: "EPSON_PURGE_K"
+                        title: "⬛ Spurgo solo Nero"
+                      - action: "EPSON_SNOOZE_24H"
+                        title: "⏳ Posticipa 24h"
+
+  # --------------------------------------------------------------------------
+  # 3. Action Handlers for Notification Buttons
+  # --------------------------------------------------------------------------
+  - id: epson_guardian_handle_purge_cmy
+    alias: "Epson Guardian: Esegui Spurgo Colore"
+    trigger:
+      - platform: event
+        event_type: mobile_app_notification_action
+        event_data:
+          action: "EPSON_PURGE_CMY"
+    action:
+      - action: rest_command.epson_purge_cmy
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.epson_last_print_color
+        data:
+          timestamp: "{{ as_timestamp(now()) }}"
+
+  - id: epson_guardian_handle_purge_k
+    alias: "Epson Guardian: Esegui Spurgo Nero"
+    trigger:
+      - platform: event
+        event_type: mobile_app_notification_action
+        event_data:
+          action: "EPSON_PURGE_K"
+    action:
+      - action: rest_command.epson_purge_k
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.epson_last_print_bw
+        data:
+          timestamp: "{{ as_timestamp(now()) }}"
+
+  - id: epson_guardian_handle_purge_cmyk
+    alias: "Epson Guardian: Esegui Spurgo Completo"
+    trigger:
+      - platform: event
+        event_type: mobile_app_notification_action
+        event_data:
+          action: "EPSON_PURGE_CMYK"
+    action:
+      - action: rest_command.epson_purge_cmyk
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.epson_last_print_bw
+        data:
+          timestamp: "{{ as_timestamp(now()) }}"
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.epson_last_print_color
+        data:
+          timestamp: "{{ as_timestamp(now()) }}"
+
+  - id: epson_guardian_handle_snooze
+    alias: "Epson Guardian: Gestisci Posticipo 24h"
+    trigger:
+      - platform: event
+        event_type: mobile_app_notification_action
+        event_data:
+          action: "EPSON_SNOOZE_24H"
+    action:
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.epson_guardian_snooze_until
+        data:
+          timestamp: "{{ as_timestamp(now()) + 86400 }}"
+

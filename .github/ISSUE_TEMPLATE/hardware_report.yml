@@ -1,0 +1,30 @@
+name: Hardware Compatibility Report
+description: Submit a test report for an Epson EcoTank / Inkjet model
+title: "[Report]: Model <Insert Model Here>"
+labels: ["hardware-compatibility"]
+body:
+  - type: markdown
+    attributes:
+      value: "Thanks for helping expand the compatibility matrix for Epson Nozzle Guardian!"
+  - type: input
+    id: model
+    attributes:
+      label: Printer Model
+      placeholder: "e.g. Epson EcoTank ET-2850"
+    validations:
+      required: true
+  - type: dropdown
+    id: status
+    attributes:
+      label: Test Result
+      options:
+        - "Working Perfectly (Driverless IPP / PWG-Raster)"
+        - "Working with Quirks (specify below)"
+        - "Not Working"
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Observations & Connection Details
+      description: "Port used (631/80), TLS enabled/disabled, firmware version if known."
