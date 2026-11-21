@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
+
 import yaml
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings
@@ -28,7 +29,7 @@ class Settings(BaseSettings):
 
     @classmethod
     def load(cls, config_path: str = "config.yaml") -> "Settings":
-        data: Dict[str, Any] = {}
+        data: dict[str, Any] = {}
         path = Path(config_path)
         if path.exists():
             with open(path, "r", encoding="utf-8") as f:

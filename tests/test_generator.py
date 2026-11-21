@@ -1,6 +1,5 @@
-from pathlib import Path
-from src.generator import PurgePatternGenerator
 from src.config import Settings
+from src.generator import PurgePatternGenerator
 
 def test_pattern_generator_paths(tmp_path):
     settings = Settings()
