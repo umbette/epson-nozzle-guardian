@@ -11,5 +11,6 @@ This document tracks tested and community-verified printer models.
 ## Submitting a New Model
 
 If you have tested another Epson or IPP-compatible inkjet printer:
-1. Open an issue using the [Hardware Compatibility Report](https://github.com/your-username/epson-nozzle-guardian/issues/new?template=hardware_report.yml) template.
+1. Open an issue using the [Hardware Compatibility Report](https://github.com/umbette/epson-nozzle-guardian/issues/new?template=hardware_report.yml) template.
 2. Our automated triage bot will process your submission and open a pull request to include your findings here!
+

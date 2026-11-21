@@ -11,9 +11,10 @@ We welcome contributions from the community!
 ## Development & Testing
 
 ```bash
-git clone https://github.com/your-username/epson-nozzle-guardian.git
+git clone https://github.com/umbette/epson-nozzle-guardian.git
 cd epson-nozzle-guardian
 pip install -r requirements.txt -r requirements-dev.txt
 pytest tests -v
 ruff check src tests
 ```
+

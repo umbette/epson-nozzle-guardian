@@ -1,6 +1,6 @@
 # Epson Nozzle Guardian
 
-[![CI Test Suite](https://github.com/your-username/epson-nozzle-guardian/actions/workflows/ci.yml/badge.svg)](https://github.com/your-username/epson-nozzle-guardian/actions/workflows/ci.yml)
+[![CI Test Suite](https://github.com/umbette/epson-nozzle-guardian/actions/workflows/ci.yml/badge.svg)](https://github.com/umbette/epson-nozzle-guardian/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-Package%20Included-41BDF5?logo=home-assistant)](homeassistant/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker)](Dockerfile)
@@ -71,3 +71,4 @@ We welcome community feedback, pull requests, and verified hardware reports!
 ## License
 
 Distributed under the [MIT License](LICENSE).
+
