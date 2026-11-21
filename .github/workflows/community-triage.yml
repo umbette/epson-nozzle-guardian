@@ -53,7 +53,7 @@ jobs:
           script: |
             const comment = `### 👋 Grazie per aver aperto questa issue!\n\n` +
               `Questo è un progetto open-source mantenuto e integrato con automazione continua.\n\n` +
-              `* Se si tratta di un bug, assicurati di aver incluso i log del container (\`docker logs epson-guardian\`) e il modello esatto della stampante.\n` +
+              `* Se si tratta di un bug, assicurati di aver incluso i log del container (\`docker logs nozzle-guardian\`) e il modello esatto della stampante.\n` +
               `* Se si tratta di una proposta di miglioramento, la community e gli script di triage la valuteranno al prossimo ciclo di rilascio.`;
             
             await github.rest.issues.addLabels({
