@@ -1,4 +1,3 @@
-import pytest
 from src.printer import EpsonPrinterClient
 
 def test_parse_web_info_valid():

@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Optional
 
 from .config import settings
-from .printer import EpsonPrinterClient, PrinterStatus, PurgeJobStatus
+from .printer import EpsonPrinterClient
 from .generator import PatternGenerator
 
 logger = logging.getLogger("nozzle_guardian.daemon")

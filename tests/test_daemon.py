@@ -1,8 +1,5 @@
-import os
-import json
-import asyncio
 from datetime import datetime, timezone, timedelta
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from src.daemon import NozzleGuardianDaemon, CURRENT_SCHEMA_VERSION
