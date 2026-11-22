@@ -1,4 +1,5 @@
 import asyncio
+import os
 import logging
 import re
 import subprocess
@@ -46,7 +47,11 @@ class EpsonPrinterClient:
         self.port = settings.printer.port
         self.timeout = settings.printer.timeout_sec
         self.use_tls = settings.printer.use_tls
-        self.test_template_path = Path("/app/data/print-job.test")
+        
+        # Use /app/data inside docker, or fallback to project local data/ directory
+        base_data = Path("/app/data") if Path("/app").is_dir() and os.access("/app", os.W_OK) else Path(__file__).resolve().parent.parent / "data"
+        base_data.mkdir(parents=True, exist_ok=True)
+        self.test_template_path = base_data / "print-job.test"
         self._ensure_test_template()
 
     def _ensure_test_template(self) -> None:
@@ -116,6 +121,19 @@ class EpsonPrinterClient:
         # Infer total if missing
         if total_pages is None and mono_pages is not None and color_pages is not None:
             total_pages = mono_pages + color_pages
+
+        # Validate that we actually found meaningful printer telemetry
+        has_telemetry = any(v is not None for v in (mono_pages, color_pages, total_pages))
+        if not has_telemetry:
+            # Did not find genuine printer telemetry: do not assume idle
+            return PrinterStatus(
+                online=False,
+                monochrome_pages=None,
+                color_pages=None,
+                total_pages=None,
+                state="unknown",
+                error_message="Web endpoint responded with HTTP 200 but contained no recognizable printer telemetry"
+            )
 
         return PrinterStatus(
             online=True,

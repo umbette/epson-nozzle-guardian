@@ -37,15 +37,24 @@ class Settings(BaseSettings):
                 if isinstance(loaded, dict):
                     data = loaded
 
-        # Override printer via env
+        # Override printer via env (supporting both PRINTER_* and legacy EPSON_*)
         printer_data = data.get("printer", {})
-        printer_data["host"] = os.getenv("EPSON_HOST", printer_data.get("host", "epson-printer.local"))
-        if "EPSON_PORT" in os.environ:
-            printer_data["port"] = int(os.environ["EPSON_PORT"])
-        if "EPSON_USE_TLS" in os.environ:
-            printer_data["use_tls"] = os.environ["EPSON_USE_TLS"].lower() in ("true", "1", "yes")
+        
+        host_env = os.getenv("PRINTER_HOST") or os.getenv("EPSON_HOST")
+        if host_env:
+            printer_data["host"] = host_env
+            
+        port_env = os.getenv("PRINTER_PORT") or os.getenv("EPSON_PORT")
+        if port_env:
+            printer_data["port"] = int(port_env)
+            
+        tls_env = os.getenv("PRINTER_USE_TLS") if "PRINTER_USE_TLS" in os.environ else os.getenv("EPSON_USE_TLS")
+        if tls_env is not None:
+            printer_data["use_tls"] = str(tls_env).lower() in ("true", "1", "yes")
+            
         if "INACTIVITY_DAYS" in os.environ:
             printer_data["inactivity_threshold_days"] = int(os.environ["INACTIVITY_DAYS"])
+            
         data["printer"] = printer_data
 
         return cls(**data)

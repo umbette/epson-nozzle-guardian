@@ -7,33 +7,38 @@ from pydantic import BaseModel
 from .config import settings
 from .generator import PatternGenerator
 from .printer import EpsonPrinterClient, PrinterStatus
+from .daemon import NozzleGuardianDaemon
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 )
-logger = logging.getLogger("epson_guardian.main")
+logger = logging.getLogger("nozzle_guardian.main")
 
 generator = PatternGenerator(assets_dir="/app/assets")
 printer_client = EpsonPrinterClient()
+daemon = NozzleGuardianDaemon(state_dir="/app/data")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Initializing Epson Nozzle Guardian...")
+    logger.info("Initializing Nozzle Guardian...")
     logger.info(f"Configured printer target: {settings.printer.host}:{settings.printer.port}")
     try:
         generator.ensure_all_patterns()
         logger.info("Purge patterns verified and ready.")
     except Exception as e:
         logger.warning(f"Could not pre-render all patterns on startup: {e}")
+        
+    daemon.start()
     yield
-    logger.info("Shutting down Epson Nozzle Guardian...")
+    daemon.stop()
+    logger.info("Shutting down Nozzle Guardian...")
 
 
 app = FastAPI(
-    title="Epson Nozzle Guardian",
-    description="Proactive anti-clogging and targeted purge daemon for Epson EcoTank ET-2814",
+    title="Nozzle Guardian",
+    description="Proactive anti-clogging and targeted purge daemon for EcoTank and inkjet printers",
     version="1.0.0",
     lifespan=lifespan
 )
@@ -54,6 +59,11 @@ async def health():
 async def get_printer_status():
     status = await printer_client.get_status()
     return status
+
+
+@app.get("/daemon/state")
+async def get_daemon_state():
+    return daemon.load_state()
 
 
 @app.post("/purge/{mode}", response_model=PurgeResponse)
