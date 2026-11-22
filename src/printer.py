@@ -18,10 +18,10 @@ IPP_PRINT_JOB_TEST = """{
   OPERATION Print-Job
   GROUP operation-attributes-tag
   ATTR charset attributes-charset utf-8
-  ATTR natural-language attributes-natural-language en
+  ATTR language attributes-natural-language en
   ATTR uri printer-uri $uri
-  ATTR nameWithoutLanguage requesting-user-name "epson-guardian"
-  ATTR nameWithoutLanguage job-name "Nozzle Guardian Purge"
+  ATTR name requesting-user-name "epson-guardian"
+  ATTR name job-name "Nozzle Guardian Purge"
   ATTR mimeMediaType document-format $document-format
   GROUP job-attributes-tag
   ATTR keyword media iso_a4_210x297mm

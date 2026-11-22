@@ -24,6 +24,16 @@ input_datetime:
     icon: mdi:clock-alert-outline
 
 input_number:
+  epson_inactivity_threshold_days:
+    name: "Epson - Soglia Inattività Ugelli"
+    min: 1
+    max: 14
+    initial: 5
+    step: 1
+    unit_of_measurement: "giorni"
+    icon: mdi:timer-alert-outline
+    mode: slider
+
   epson_last_counter_bw:
     name: "Epson - Ultimo Contatore B/N"
     min: 0
@@ -107,6 +117,178 @@ template:
           {% endif %}
         icon: mdi:calendar-alert
 
+  - button:
+      - name: "Epson Spurgo Completo (CMYK)"
+        unique_id: epson_btn_purge_cmyk
+        icon: mdi:printer-3d-nozzle-alert
+        press:
+          - action: script.epson_spurgo_completo
+
+      - name: "Epson Spurgo Solo Colori (CMY)"
+        unique_id: epson_btn_purge_cmy
+        icon: mdi:palette-outline
+        press:
+          - action: script.epson_spurgo_colori
+
+      - name: "Epson Spurgo Solo Nero (K)"
+        unique_id: epson_btn_purge_k
+        icon: mdi:format-color-fill
+        press:
+          - action: script.epson_spurgo_nero
+
+      - name: "Epson Guardian Posticipa 24h"
+        unique_id: epson_btn_snooze_24h
+        icon: mdi:clock-fast
+        press:
+          - action: script.epson_posticipa_24h
+
+      - name: "Epson Riduci Soglia Inattività (-1gg)"
+        unique_id: epson_btn_reduce_threshold
+        icon: mdi:arrow-down-bold-circle-outline
+        press:
+          - action: script.epson_reduce_inactivity_threshold
+
+      - name: "Epson Aumenta Soglia Inattività (+1gg)"
+        unique_id: epson_btn_increase_threshold
+        icon: mdi:arrow-up-bold-circle-outline
+        press:
+          - action: script.epson_increase_inactivity_threshold
+
+script:
+  epson_spurgo_completo:
+    alias: "Spurgo Completo (CMYK)"
+    description: "Esegue micro-stampa per tutti i canali (Nero e Colori)"
+    icon: mdi:printer-3d-nozzle-alert
+    sequence:
+      - action: rest_command.epson_purge_cmyk
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.epson_last_print_bw
+        data:
+          timestamp: "{{ as_timestamp(now()) }}"
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.epson_last_print_color
+        data:
+          timestamp: "{{ as_timestamp(now()) }}"
+      - action: script.turn_on
+        target:
+          entity_id: script.epson_invia_verifica_ugelli
+
+  epson_spurgo_colori:
+    alias: "Spurgo Solo Colori (CMY)"
+    description: "Esegue micro-stampa solo per i canali Colori (Ciano, Magenta, Giallo)"
+    icon: mdi:palette-outline
+    sequence:
+      - action: rest_command.epson_purge_cmy
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.epson_last_print_color
+        data:
+          timestamp: "{{ as_timestamp(now()) }}"
+      - action: script.turn_on
+        target:
+          entity_id: script.epson_invia_verifica_ugelli
+
+  epson_spurgo_nero:
+    alias: "Spurgo Solo Nero (K)"
+    description: "Esegue micro-stampa solo per il canale Nero"
+    icon: mdi:format-color-fill
+    sequence:
+      - action: rest_command.epson_purge_k
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.epson_last_print_bw
+        data:
+          timestamp: "{{ as_timestamp(now()) }}"
+      - action: script.turn_on
+        target:
+          entity_id: script.epson_invia_verifica_ugelli
+
+  epson_posticipa_24h:
+    alias: "Posticipa Notifiche Spurgo 24h"
+    description: "Posticipa il controllo per 24 ore"
+    icon: mdi:clock-fast
+    sequence:
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.epson_guardian_snooze_until
+        data:
+          timestamp: "{{ as_timestamp(now()) + 86400 }}"
+
+  epson_invia_verifica_ugelli:
+    alias: "Verifica Qualità Ugelli post-stampa"
+    description: "Invia notifica di verifica pattern ugelli e richiesta feedback"
+    icon: mdi:check-decagram
+    sequence:
+      - delay: "00:00:40"
+      - action: notify.mobile_app_smartphone_umbette
+        data:
+          title: "🔍 Epson: Verifica Qualità Ugelli"
+          message: "Micro-stampa completata! Controlla i gradini di ispezione sul foglio: tutti i tratti sono nitidi o hai riscontrato otturazioni?"
+          data:
+            tag: "epson-nozzle-feedback"
+            clickAction: "/stampante"
+            actions:
+              - action: "EPSON_FEEDBACK_OK"
+                title: "✅ Ugelli Perfetti"
+              - action: "EPSON_FEEDBACK_CLOGGED"
+                title: "⚠️ Serve Pulizia (-1gg)"
+
+  epson_reduce_inactivity_threshold:
+    alias: "Riduci Soglia Inattività (-1 gg)"
+    description: "Riduce di 1 giorno la soglia di inattività per prevenire ostruzioni"
+    icon: mdi:arrow-down-bold-circle-outline
+    sequence:
+      - choose:
+          - conditions:
+              - condition: template
+                value_template: "{{ (states('input_number.epson_inactivity_threshold_days') | int(5)) > 1 }}"
+            sequence:
+              - action: input_number.set_value
+                target:
+                  entity_id: input_number.epson_inactivity_threshold_days
+                data:
+                  value: "{{ (states('input_number.epson_inactivity_threshold_days') | int(5)) - 1 }}"
+              - action: notify.mobile_app_smartphone_umbette
+                data:
+                  title: "📉 Soglia Inattività Ridotta"
+                  message: "La nuova soglia è di {{ states('input_number.epson_inactivity_threshold_days') | int }} giorni. Gli spurghi preventivi avverranno con maggiore frequenza per evitare intasamenti."
+                  data:
+                    tag: "epson-threshold-change"
+                    clickAction: "/stampante"
+        default:
+          - action: notify.mobile_app_smartphone_umbette
+            data:
+              title: "ℹ️ Soglia Inattività al Minimo"
+              message: "La soglia è già al valore minimo di 1 giorno."
+              data:
+                tag: "epson-threshold-change"
+                clickAction: "/stampante"
+
+  epson_increase_inactivity_threshold:
+    alias: "Aumenta Soglia Inattività (+1 gg)"
+    description: "Aumenta di 1 giorno la soglia di inattività"
+    icon: mdi:arrow-up-bold-circle-outline
+    sequence:
+      - choose:
+          - conditions:
+              - condition: template
+                value_template: "{{ (states('input_number.epson_inactivity_threshold_days') | int(5)) < 14 }}"
+            sequence:
+              - action: input_number.set_value
+                target:
+                  entity_id: input_number.epson_inactivity_threshold_days
+                data:
+                  value: "{{ (states('input_number.epson_inactivity_threshold_days') | int(5)) + 1 }}"
+              - action: notify.mobile_app_smartphone_umbette
+                data:
+                  title: "📈 Soglia Inattività Aumentata"
+                  message: "La nuova soglia è di {{ states('input_number.epson_inactivity_threshold_days') | int }} giorni."
+                  data:
+                    tag: "epson-threshold-change"
+                    clickAction: "/stampante"
+
 automation:
   # --------------------------------------------------------------------------
   # 1. Update Last Print Timestamps when Counters Increase
@@ -178,12 +360,14 @@ automation:
                 entity_id: sensor.epson_guardian_status
                 state: "offline"
               - condition: template
-                value_template: "{{ (states('sensor.giorni_da_ultima_stampa_colori') | float(0) >= 5) or (states('sensor.giorni_da_ultima_stampa_b_n') | float(0) >= 5) }}"
+                value_template: >-
+                  {% set th = states('input_number.epson_inactivity_threshold_days') | float(5) %}
+                  {{ (states('sensor.giorni_da_ultima_stampa_colori') | float(0) >= th) or (states('sensor.giorni_da_ultima_stampa_b_n') | float(0) >= th) }}
             sequence:
-              - action: notify.mobile_app_YOUR_PHONE_NAME
+              - action: notify.mobile_app_smartphone_umbette
                 data:
-                  title: "⚠️ Epson ET-2814 Offline"
-                  message: "La stampante è spenta e non stampa da oltre 5 giorni. Accendila per prevenire l'ostruzione degli ugelli."
+                  title: "⚠️ Epson ET-2810 Offline"
+                  message: "La stampante è spenta e non stampa da oltre {{ states('input_number.epson_inactivity_threshold_days') | int }} giorni. Accendila per prevenire l'ostruzione degli ugelli."
                   data:
                     tag: "epson-guardian-offline"
 
@@ -192,19 +376,18 @@ automation:
               - condition: state
                 entity_id: sensor.epson_guardian_status
                 state: "idle"
-              - condition: numeric_state
-                entity_id: sensor.giorni_da_ultima_stampa_b_n
-                above: 4.9
-              - condition: numeric_state
-                entity_id: sensor.giorni_da_ultima_stampa_colori
-                above: 4.9
+              - condition: template
+                value_template: >-
+                  {% set th = states('input_number.epson_inactivity_threshold_days') | float(5) %}
+                  {{ (states('sensor.giorni_da_ultima_stampa_b_n') | float(0)) >= (th - 0.1) and (states('sensor.giorni_da_ultima_stampa_colori') | float(0)) >= (th - 0.1) }}
             sequence:
-              - action: notify.mobile_app_YOUR_PHONE_NAME
+              - action: notify.mobile_app_smartphone_umbette
                 data:
                   title: "⚠️ Epson: Rischio Ugelli Completo (CMYK)"
-                  message: "Nessuna stampa negli ultimi 5 giorni (sia B/N che Colori). Eseguo spurgo completo su foglio di scarto?"
+                  message: "Nessuna stampa negli ultimi {{ states('input_number.epson_inactivity_threshold_days') | int }} giorni (sia B/N che Colori). Eseguo spurgo completo su foglio di scarto?"
                   data:
                     tag: "epson-guardian-purge"
+                    clickAction: "/stampante"
                     actions:
                       - action: "EPSON_PURGE_CMYK"
                         title: "🖨️ Spurgo Completo"
@@ -216,19 +399,18 @@ automation:
               - condition: state
                 entity_id: sensor.epson_guardian_status
                 state: "idle"
-              - condition: numeric_state
-                entity_id: sensor.giorni_da_ultima_stampa_colori
-                above: 4.9
-              - condition: numeric_state
-                entity_id: sensor.giorni_da_ultima_stampa_b_n
-                below: 5.0
+              - condition: template
+                value_template: >-
+                  {% set th = states('input_number.epson_inactivity_threshold_days') | float(5) %}
+                  {{ (states('sensor.giorni_da_ultima_stampa_colori') | float(0)) >= (th - 0.1) and (states('sensor.giorni_da_ultima_stampa_b_n') | float(0)) < (th - 0.1) }}
             sequence:
-              - action: notify.mobile_app_YOUR_PHONE_NAME
+              - action: notify.mobile_app_smartphone_umbette
                 data:
                   title: "⚠️ Epson: Ugelli Colore a Rischio"
-                  message: "Hai stampato in B/N di recente, ma i colori sono inattivi da {{ states('sensor.giorni_da_ultima_stampa_colori') }} giorni. Eseguo spurgo mirato CMY?"
+                  message: "Hai stampato in B/N di recente, ma i colori sono inattivi da {{ states('sensor.giorni_da_ultima_stampa_colori') }} giorni (soglia: {{ states('input_number.epson_inactivity_threshold_days') | int }}gg). Eseguo spurgo mirato CMY?"
                   data:
                     tag: "epson-guardian-purge"
+                    clickAction: "/stampante"
                     actions:
                       - action: "EPSON_PURGE_CMY"
                         title: "🎨 Spurgo solo Colori"
@@ -240,19 +422,18 @@ automation:
               - condition: state
                 entity_id: sensor.epson_guardian_status
                 state: "idle"
-              - condition: numeric_state
-                entity_id: sensor.giorni_da_ultima_stampa_b_n
-                above: 4.9
-              - condition: numeric_state
-                entity_id: sensor.giorni_da_ultima_stampa_colori
-                below: 5.0
+              - condition: template
+                value_template: >-
+                  {% set th = states('input_number.epson_inactivity_threshold_days') | float(5) %}
+                  {{ (states('sensor.giorni_da_ultima_stampa_b_n') | float(0)) >= (th - 0.1) and (states('sensor.giorni_da_ultima_stampa_colori') | float(0)) < (th - 0.1) }}
             sequence:
-              - action: notify.mobile_app_YOUR_PHONE_NAME
+              - action: notify.mobile_app_smartphone_umbette
                 data:
                   title: "⚠️ Epson: Ugello Nero a Rischio"
-                  message: "L'ugello del nero è inattivo da {{ states('sensor.giorni_da_ultima_stampa_b_n') }} giorni. Eseguo spurgo mirato Nero?"
+                  message: "L'ugello del nero è inattivo da {{ states('sensor.giorni_da_ultima_stampa_b_n') }} giorni (soglia: {{ states('input_number.epson_inactivity_threshold_days') | int }}gg). Eseguo spurgo mirato Nero?"
                   data:
                     tag: "epson-guardian-purge"
+                    clickAction: "/stampante"
                     actions:
                       - action: "EPSON_PURGE_K"
                         title: "⬛ Spurgo solo Nero"
@@ -270,12 +451,7 @@ automation:
         event_data:
           action: "EPSON_PURGE_CMY"
     action:
-      - action: rest_command.epson_purge_cmy
-      - action: input_datetime.set_datetime
-        target:
-          entity_id: input_datetime.epson_last_print_color
-        data:
-          timestamp: "{{ as_timestamp(now()) }}"
+      - action: script.epson_spurgo_colori
 
   - id: epson_guardian_handle_purge_k
     alias: "Epson Guardian: Esegui Spurgo Nero"
@@ -285,12 +461,7 @@ automation:
         event_data:
           action: "EPSON_PURGE_K"
     action:
-      - action: rest_command.epson_purge_k
-      - action: input_datetime.set_datetime
-        target:
-          entity_id: input_datetime.epson_last_print_bw
-        data:
-          timestamp: "{{ as_timestamp(now()) }}"
+      - action: script.epson_spurgo_nero
 
   - id: epson_guardian_handle_purge_cmyk
     alias: "Epson Guardian: Esegui Spurgo Completo"
@@ -300,17 +471,7 @@ automation:
         event_data:
           action: "EPSON_PURGE_CMYK"
     action:
-      - action: rest_command.epson_purge_cmyk
-      - action: input_datetime.set_datetime
-        target:
-          entity_id: input_datetime.epson_last_print_bw
-        data:
-          timestamp: "{{ as_timestamp(now()) }}"
-      - action: input_datetime.set_datetime
-        target:
-          entity_id: input_datetime.epson_last_print_color
-        data:
-          timestamp: "{{ as_timestamp(now()) }}"
+      - action: script.epson_spurgo_completo
 
   - id: epson_guardian_handle_snooze
     alias: "Epson Guardian: Gestisci Posticipo 24h"
@@ -320,9 +481,30 @@ automation:
         event_data:
           action: "EPSON_SNOOZE_24H"
     action:
-      - action: input_datetime.set_datetime
-        target:
-          entity_id: input_datetime.epson_guardian_snooze_until
-        data:
-          timestamp: "{{ as_timestamp(now()) + 86400 }}"
+      - action: script.epson_posticipa_24h
 
+  - id: epson_guardian_handle_feedback_ok
+    alias: "Epson Guardian: Feedback Ugelli OK"
+    trigger:
+      - platform: event
+        event_type: mobile_app_notification_action
+        event_data:
+          action: "EPSON_FEEDBACK_OK"
+    action:
+      - action: notify.mobile_app_smartphone_umbette
+        data:
+          title: "✅ Ugelli in Ottima Salute"
+          message: "Perfetto! La soglia attuale di {{ states('input_number.epson_inactivity_threshold_days') | int }} giorni è ottimale."
+          data:
+            tag: "epson-nozzle-feedback"
+            clickAction: "/stampante"
+
+  - id: epson_guardian_handle_feedback_clogged
+    alias: "Epson Guardian: Feedback Ugelli Ostruiti (Riduci Soglia)"
+    trigger:
+      - platform: event
+        event_type: mobile_app_notification_action
+        event_data:
+          action: "EPSON_FEEDBACK_CLOGGED"
+    action:
+      - action: script.epson_reduce_inactivity_threshold

@@ -6,7 +6,7 @@ printer:
   use_tls: true
 
 pattern:
-  dpi: 300
+  dpi: 360
   stripe_height_mm: 3.0
   stripe_spacing_mm: 1.0
   top_margin_mm: 10.0
