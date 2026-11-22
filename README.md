@@ -9,6 +9,20 @@
 
 Eliminates dried ink printhead nozzle clogs on tank and inkjet printers by monitoring Monochrome (K) and Color (CMY) dormancy independently. When a channel remains idle for too long, it triggers targeted micro-stripes via driverless IPP (`image/pwg-raster`) with optional Home Assistant mobile approvals.
 
+<p align="center">
+  <img src="docs/assets/nozzle-guardian-demo.gif" alt="Nozzle Guardian Daemon In Action" width="800" style="border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+</p>
+
+---
+
+## ⚖️ Why Nozzle Guardian? Surgical Purge vs. Factory Power Clean
+
+Factory "Power Cleaning" cycles drain nearly a third of all ink tanks straight into the waste pad just to clear one dried nozzle. Nozzle Guardian replaces this with surgical, channel-decoupled micro-stripes:
+
+<p align="center">
+  <img src="docs/assets/comparison-diagram.svg" alt="Comparison: Nozzle Guardian vs Factory Power Clean" width="900">
+</p>
+
 ---
 
 ## Architecture Principles: 100% Local-First & Zero-Trust
