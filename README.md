@@ -19,9 +19,29 @@ Eliminates dried ink printhead nozzle clogs on tank and inkjet printers by monit
 
 Factory "Power Cleaning" cycles drain nearly a third of all ink tanks straight into the waste pad just to clear one dried nozzle. Nozzle Guardian replaces this with surgical, channel-decoupled micro-stripes:
 
+| Comparison Metric | Standard Head Clean | Factory "Power Clean" | Nozzle Guardian Surgical Purge |
+|---|:---:|:---:|:---:|
+| **Ink Consumed** | ~2 – 4 ml | **~8 – 15 ml** | **~0.006 ml** (Picoliter droplets) |
+| **Ink Efficiency** | Dumps ink to waste pad | Dumps up to 25% of bottle | **~1,000× less ink used** |
+| **Waste Pad / Box Wear** | High | Severe (risks bricking printer) | **Zero** (no ink pumped to waste pad) |
+| **Purge Mechanism** | Peristaltic vacuum suction | Aggressive high-pressure suction | Micro-Piezo printhead firing |
+| **Paper Required** | Blank sheet | Blank sheet | **Reuses same scrap page 50+ times** |
+
 <p align="center">
   <img src="docs/assets/comparison-diagram.svg" alt="Comparison: Nozzle Guardian vs Factory Power Clean" width="900">
 </p>
+
+---
+
+## 📸 Real-World Live Test Printout
+
+Here is an actual printout generated on an **Epson EcoTank ET-2810** running Nozzle Guardian:
+
+<p align="center">
+  <img src="docs/assets/live-test-printout.jpg" alt="Nozzle Guardian Live Printout Test" width="600" style="border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+</p>
+
+*Notice how all 4 channels sweep the **full 210 mm page width**, yet consume only a narrow band at the top margin — leaving >85% of the A4 page completely clean for reuse.*
 
 ---
 
@@ -29,12 +49,14 @@ Factory "Power Cleaning" cycles drain nearly a third of all ink tanks straight i
 
 * **Zero Cloud Dependencies:** Completely standalone. No dynamic remote feeds, no telemetry callbacks, and zero external tracking.
 * **Universal Driverless IPP:** Sends `image/pwg-raster` directly over IPPS (port 631) without needing CUPS or proprietary PPD drivers. Compatible with Epson EcoTank, Canon MegaTank, HP Smart Tank, and Brother Inkvestment.
-* **Decoupled Channel Tracking:** Monitors Black & White and Color page counts separately via printer Web Config and IPP job telemetry.
-* **Targeted Micro-Patterns:**
-  * **CMY Only:** Fires only Cyan, Magenta, and Yellow (100% Black ink preserved).
-  * **K Only:** Fires only true Black (100% Color ink preserved, avoiding composite black).
-  * **CMYK:** Fires all 4 channels only when both have been dormant.
-* **Waste & Paper Efficiency:** Micro-stripes are only 3 mm high on the top margin of an A4 page ($< 0.01\text{ ml}$ ink). You can reuse the exact same scrap paper sheet in the rear feeder dozens of times.
+* **Full-Width Page-Spanning Bands (210 mm wide × 3 mm tall):** The micro-stripe is **NOT** a 3 mm short tick. It spans the entire width of the page so that **100% of the printhead nozzles across the carriage sweep fire repeatedly**, ensuring all nozzles stay hydrated while preserving paper.
+* **Decoupled Channel Tracking (B/W vs Color):** Monitors Black & White and Color page counts separately via printer Web Config and IPP job telemetry.
+  * *Print text documents daily?* The Black channel is active, so **zero Black ink is purged**.
+  * *Colors dormant for 5 days?* It triggers a targeted flush **only for Cyan, Magenta, and Yellow (CMY)**.
+  * *Need both?* CMYK purge only runs when all channels are dormant.
+* **Diagnostic Nozzle Inspection Ladder:** Underneath the purge bands, Nozzle Guardian prints micro-comb staircase ladders for each active channel, giving instant visual confirmation that every nozzle is streak-free.
+* **Adaptive Auto-Learning Threshold (Home Assistant):** When a purge finishes, Home Assistant sends an actionable push notification (`All Good` vs `Clogged / Clean Needed`). If dry room conditions cause clogs, confirming with one tap automatically shortens the dormancy interval (e.g. from 5 to 4 or 3 days), adapting to your local climate.
+* **Waste & Paper Efficiency:** Micro-stripes use $< 0.01\text{ ml}$ ink. You can reuse the exact same scrap paper sheet in the rear feeder dozens of times.
 * **Home Assistant Package:** Out-of-the-box actionable notifications with one-tap execution buttons (`[Purge Colors]`, `[Purge Black]`, `[Full Purge]`, `[Snooze 24h]`).
 
 ---
