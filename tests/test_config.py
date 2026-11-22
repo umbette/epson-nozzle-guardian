@@ -1,12 +1,13 @@
 from src.config import Settings
 
 def test_default_config():
-    settings = Settings()
+    settings = Settings(allow_unauthenticated=True)
     assert settings.printer.port == 631
     assert settings.printer.inactivity_threshold_days == 5
     assert settings.printer.auto_purge_enabled is False
     assert settings.pattern.dpi == 300
     assert settings.api_key is None
+    assert settings.allow_unauthenticated is True
 
 def test_env_override(monkeypatch):
     monkeypatch.setenv("PRINTER_HOST", "10.0.0.42")

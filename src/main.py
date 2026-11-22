@@ -30,13 +30,16 @@ def _resolve_dir(target_path: str, fallback_path: str) -> str:
 generator = PatternGenerator(assets_dir=_resolve_dir("/app/assets", "assets"))
 printer_client = EpsonPrinterClient()
 daemon = NozzleGuardianDaemon(state_dir=_resolve_dir("/app/data", "data"))
-purge_lock = asyncio.Lock()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Initializing Nozzle Guardian...")
     logger.info(f"Configured printer target: {settings.printer.host}:{settings.printer.port}")
+    if not settings.allow_unauthenticated:
+        logger.info("Security: API Key authentication is ENFORCED for all state and mutating routes.")
+    else:
+        logger.warning("Security Warning: Running with ALLOW_UNAUTHENTICATED=true.")
     try:
         generator.ensure_all_patterns()
         logger.info("Purge patterns verified and ready.")
@@ -68,23 +71,30 @@ class AutoPurgeToggleRequest(BaseModel):
 
 
 def _verify_api_key(x_api_key: Optional[str]):
-    if settings.api_key and x_api_key != settings.api_key:
-        raise HTTPException(status_code=401, detail="Unauthorized: invalid or missing API key.")
+    if not settings.allow_unauthenticated:
+        if not settings.api_key or x_api_key != settings.api_key:
+            raise HTTPException(status_code=401, detail="Unauthorized: invalid or missing API key.")
 
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "printer_host": settings.printer.host}
+    return {
+        "status": "ok",
+        "printer_host": settings.printer.host,
+        "auth_enforced": not settings.allow_unauthenticated
+    }
 
 
 @app.get("/status", response_model=PrinterStatus)
-async def get_printer_status():
+async def get_printer_status(x_api_key: Optional[str] = Header(None)):
+    _verify_api_key(x_api_key)
     status = await printer_client.get_status()
     return status
 
 
 @app.get("/daemon/state")
-async def get_daemon_state():
+async def get_daemon_state(x_api_key: Optional[str] = Header(None)):
+    _verify_api_key(x_api_key)
     return daemon.load_state()
 
 
@@ -106,37 +116,39 @@ async def trigger_purge(mode: str, x_api_key: Optional[str] = Header(None)):
     if mode not in ("cmy", "k", "cmyk"):
         raise HTTPException(status_code=400, detail="Invalid purge mode. Must be 'cmy', 'k', or 'cmyk'.")
 
-    if purge_lock.locked():
+    if printer_client.is_busy:
         raise HTTPException(status_code=409, detail="A purge print job is already in progress.")
 
-    async with purge_lock:
-        # Check printer status first
-        status = await printer_client.get_status()
-        if not status.online:
-            raise HTTPException(
-                status_code=503,
-                detail=f"Printer at {settings.printer.host} is offline or unreachable."
-            )
-
-        # Locate raster or compile if missing
-        pwg_file = Path(f"/app/assets/purge_{mode}.pwg")
-        if not pwg_file.exists():
-            logger.info(f"Compiling missing pattern for mode: {mode}")
-            pwg_file = await asyncio.to_thread(generator.compile_pwg, mode)
-
-        success = await asyncio.to_thread(printer_client.print_purge_file, pwg_file, mode=mode)
-        if not success:
-            # Fallback to PNG if PWG failed or wasn't supported
-            png_file = Path(f"/app/assets/purge_{mode}.png")
-            if png_file.exists() and pwg_file.suffix == ".pwg":
-                logger.info("Retrying with raw PNG format fallback...")
-                success = await asyncio.to_thread(printer_client.print_purge_file, png_file, mode=mode)
-
-        if not success:
-            raise HTTPException(status_code=500, detail="IPP print job execution failed.")
-
-        return PurgeResponse(
-            success=True,
-            mode=mode,
-            message=f"Targeted purge pattern '{mode.upper()}' successfully dispatched to printer."
+    # Check printer status first
+    status = await printer_client.get_status()
+    if not status.online:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Printer at {settings.printer.host} is offline or unreachable."
         )
+
+    # Locate raster or compile if missing
+    pwg_file = Path(f"/app/assets/purge_{mode}.pwg")
+    if not pwg_file.exists():
+        logger.info(f"Compiling missing pattern for mode: {mode}")
+        pwg_file = await asyncio.to_thread(generator.compile_pwg, mode)
+
+    success = await printer_client.execute_purge_job(pwg_file, mode=mode)
+    if not success and printer_client.is_busy:
+        raise HTTPException(status_code=409, detail="A purge print job is already in progress.")
+
+    if not success:
+        # Fallback to PNG if PWG failed or wasn't supported
+        png_file = Path(f"/app/assets/purge_{mode}.png")
+        if png_file.exists() and pwg_file.suffix == ".pwg":
+            logger.info("Retrying with raw PNG format fallback...")
+            success = await printer_client.execute_purge_job(png_file, mode=mode)
+
+    if not success:
+        raise HTTPException(status_code=500, detail="IPP print job execution failed.")
+
+    return PurgeResponse(
+        success=True,
+        mode=mode,
+        message=f"Targeted purge pattern '{mode.upper()}' successfully dispatched to printer."
+    )

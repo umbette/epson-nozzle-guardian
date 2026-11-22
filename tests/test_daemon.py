@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock, patch, MagicMock
 import pytest
 from src.daemon import NozzleGuardianDaemon
 from src.printer import PrinterStatus
-from src.main import purge_lock
 
 
 @pytest.fixture
@@ -130,8 +129,84 @@ async def test_dormancy_purge_triggers_only_when_enabled_and_supported(daemon_in
 
 
 @pytest.mark.asyncio
-async def test_purge_lock_concurrency():
-    assert not purge_lock.locked()
-    async with purge_lock:
-        assert purge_lock.locked()
-    assert not purge_lock.locked()
+async def test_evaluate_channels_only_monochrome_triggers_k_only(daemon_instance):
+    """When only monochrome counter is present and dormant, only K purge must trigger."""
+    state = daemon_instance.load_state()
+    state["auto_purge_enabled"] = True
+    state["last_mono_pages"] = 200
+    state["last_mono_activity"] = (datetime.now(timezone.utc) - timedelta(days=10)).isoformat()
+    daemon_instance.save_state(state)
+
+    status_only_mono = PrinterStatus(
+        online=True,
+        monochrome_pages=200,
+        color_pages=None,  # Not supported
+        total_pages=200,
+        state="idle"
+    )
+
+    with patch.object(daemon_instance.printer_client, "get_status", AsyncMock(return_value=status_only_mono)), \
+         patch.object(daemon_instance, "_execute_purge", AsyncMock(return_value=True)) as mock_purge:
+        
+        await daemon_instance.evaluate_channels()
+        mock_purge.assert_called_once_with("k")
+
+    updated = daemon_instance.load_state()
+    assert updated["mono_channel_supported"] is True
+    assert updated["color_channel_supported"] is False
+
+
+@pytest.mark.asyncio
+async def test_evaluate_channels_only_color_triggers_cmy_only(daemon_instance):
+    """When only color counter is present and dormant, only CMY purge must trigger."""
+    state = daemon_instance.load_state()
+    state["auto_purge_enabled"] = True
+    state["last_color_pages"] = 80
+    state["last_color_activity"] = (datetime.now(timezone.utc) - timedelta(days=10)).isoformat()
+    daemon_instance.save_state(state)
+
+    status_only_color = PrinterStatus(
+        online=True,
+        monochrome_pages=None,  # Not supported
+        color_pages=80,
+        total_pages=80,
+        state="idle"
+    )
+
+    with patch.object(daemon_instance.printer_client, "get_status", AsyncMock(return_value=status_only_color)), \
+         patch.object(daemon_instance, "_execute_purge", AsyncMock(return_value=True)) as mock_purge:
+        
+        await daemon_instance.evaluate_channels()
+        mock_purge.assert_called_once_with("cmy")
+
+    updated = daemon_instance.load_state()
+    assert updated["mono_channel_supported"] is False
+    assert updated["color_channel_supported"] is True
+
+
+@pytest.mark.asyncio
+async def test_shared_client_lock_serializes_daemon_and_api(daemon_instance):
+    """Verifies that the printer client lock prevents simultaneous job dispatches between daemon and API."""
+    client = daemon_instance.printer_client
+    assert not client.is_busy
+
+    async with client._lock:
+        assert client.is_busy
+        # When lock is held, execute_purge_job must reject immediately
+        rejected = await client.execute_purge_job(daemon_instance.state_file, mode="k")
+        assert rejected is False
+
+    assert not client.is_busy
+
+
+def test_fail_closed_api_key_generation(tmp_path, monkeypatch):
+    """When API_KEY is not configured in env, a persistent 32-byte secret is created and enforced."""
+    monkeypatch.delenv("API_KEY", raising=False)
+    monkeypatch.delenv("ALLOW_UNAUTHENTICATED", raising=False)
+    from src.config import Settings
+    
+    settings = Settings.load(config_path="nonexistent.yaml", data_dir=str(tmp_path))
+    assert settings.api_key is not None
+    assert len(settings.api_key) == 64  # 32 bytes hex
+    assert (tmp_path / "api_key.secret").exists()
+    assert (tmp_path / "api_key.secret").read_text(encoding="utf-8").strip() == settings.api_key

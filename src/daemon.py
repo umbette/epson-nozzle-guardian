@@ -158,7 +158,7 @@ class NozzleGuardianDaemon:
         pwg_file = self.generator.get_pwg_path(mode)
         if not pwg_file.exists():
             pwg_file = await asyncio.to_thread(self.generator.compile_pwg, mode)
-        return await asyncio.to_thread(self.printer_client.print_purge_file, pwg_file, mode=mode)
+        return await self.printer_client.execute_purge_job(pwg_file, mode=mode)
 
     async def run_loop(self):
         self._running = True

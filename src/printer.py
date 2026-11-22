@@ -58,6 +58,24 @@ class EpsonPrinterClient:
         base_data.mkdir(parents=True, exist_ok=True)
         self.test_template_path = base_data / "print-job.test"
         self._ensure_test_template()
+        self._lock = asyncio.Lock()
+
+    @property
+    def is_busy(self) -> bool:
+        """Returns True if a print job is currently being dispatched or executing."""
+        return self._lock.locked()
+
+    async def execute_purge_job(self, file_path: Path, mode: str) -> bool:
+        """
+        Atomically executes a purge job, serializing dispatches across both background daemon
+        and HTTP API routes to prevent overlapping print jobs on the printer's IPP queue.
+        """
+        if self._lock.locked():
+            logger.warning("Purge job execution rejected: printer client lock is held by another active job.")
+            return False
+
+        async with self._lock:
+            return await asyncio.to_thread(self.print_purge_file, file_path, mode=mode)
 
     def _ensure_test_template(self) -> None:
         self.test_template_path.parent.mkdir(parents=True, exist_ok=True)

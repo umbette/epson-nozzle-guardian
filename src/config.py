@@ -1,4 +1,5 @@
 import os
+import secrets
 from pathlib import Path
 from typing import Any, Optional
 
@@ -28,9 +29,10 @@ class Settings(BaseSettings):
     printer: PrinterConfig = Field(default_factory=PrinterConfig)
     pattern: PatternConfig = Field(default_factory=PatternConfig)
     api_key: Optional[str] = None
+    allow_unauthenticated: bool = False
 
     @classmethod
-    def load(cls, config_path: str = "config.yaml") -> "Settings":
+    def load(cls, config_path: str = "config.yaml", data_dir: str = "/app/data") -> "Settings":
         data: dict[str, Any] = {}
         path = Path(config_path)
         if path.exists():
@@ -63,8 +65,37 @@ class Settings(BaseSettings):
             
         data["printer"] = printer_data
 
-        if "API_KEY" in os.environ:
-            data["api_key"] = os.environ["API_KEY"]
+        allow_unauth = os.getenv("ALLOW_UNAUTHENTICATED", "").lower() in ("true", "1", "yes")
+        data["allow_unauthenticated"] = allow_unauth
+
+        api_key_env = os.getenv("API_KEY")
+        if api_key_env:
+            data["api_key"] = api_key_env
+        elif allow_unauth:
+            data["api_key"] = None
+        else:
+            # Fail-closed security default: load or create persistent secret key in data directory
+            try:
+                state_path = Path(data_dir)
+                state_path.mkdir(parents=True, exist_ok=True)
+            except (PermissionError, OSError):
+                state_path = Path("data").resolve()
+                state_path.mkdir(parents=True, exist_ok=True)
+
+            secret_file = state_path / "api_key.secret"
+            if secret_file.exists():
+                try:
+                    data["api_key"] = secret_file.read_text(encoding="utf-8").strip()
+                except Exception:
+                    data["api_key"] = secrets.token_hex(32)
+            else:
+                generated_key = secrets.token_hex(32)
+                try:
+                    secret_file.write_text(generated_key, encoding="utf-8")
+                    secret_file.chmod(0o600)
+                except Exception:
+                    pass
+                data["api_key"] = generated_key
 
         return cls(**data)
 
