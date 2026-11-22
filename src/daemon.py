@@ -7,10 +7,12 @@ from pathlib import Path
 from typing import Optional
 
 from .config import settings
-from .printer import EpsonPrinterClient, PrinterStatus
+from .printer import EpsonPrinterClient, PrinterStatus, PurgeJobStatus
 from .generator import PatternGenerator
 
 logger = logging.getLogger("nozzle_guardian.daemon")
+
+CURRENT_SCHEMA_VERSION = 2
 
 
 class NozzleGuardianDaemon:
@@ -32,6 +34,7 @@ class NozzleGuardianDaemon:
 
     def load_state(self) -> dict:
         default_state = {
+            "schema_version": CURRENT_SCHEMA_VERSION,
             "last_mono_pages": None,
             "last_color_pages": None,
             "last_mono_activity": datetime.now(timezone.utc).isoformat(),
@@ -46,6 +49,16 @@ class NozzleGuardianDaemon:
             try:
                 loaded = json.loads(self.state_file.read_text(encoding="utf-8"))
                 if isinstance(loaded, dict):
+                    # Schema migration: reset unconfirmed auto_purge_enabled from v1
+                    version = loaded.get("schema_version", 1)
+                    if version < CURRENT_SCHEMA_VERSION:
+                        logger.warning(
+                            f"Migrated guardian state from schema v{version} to v{CURRENT_SCHEMA_VERSION}. "
+                            "Resetting auto_purge_enabled to False (opt-in reconfirmation required)."
+                        )
+                        loaded["schema_version"] = CURRENT_SCHEMA_VERSION
+                        loaded["auto_purge_enabled"] = False
+
                     for k, v in default_state.items():
                         if k not in loaded:
                             loaded[k] = v

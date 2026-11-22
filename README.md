@@ -60,7 +60,13 @@ PRINTER_HOST=192.168.1.100
 PRINTER_PORT=631
 PRINTER_USE_TLS=true
 INACTIVITY_DAYS=5
+AUTO_PURGE_ENABLED=false
+# Leave blank to auto-generate a 32-byte secret in ./data/api_key.secret
+API_KEY=
 ```
+
+> [!NOTE]
+> **Fail-Closed API Authentication:** If `API_KEY` is not provided in `.env` and `ALLOW_UNAUTHENTICATED=false`, Nozzle Guardian automatically provisions a persistent 32-byte cryptographic hex secret at `./data/api_key.secret` (file permissions `0600`). Pass this token in the `X-API-Key` HTTP header.
 
 ### 2. Launch Daemon
 ```bash

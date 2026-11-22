@@ -5,8 +5,8 @@ from datetime import datetime, timezone, timedelta
 from unittest.mock import AsyncMock, patch, MagicMock
 
 import pytest
-from src.daemon import NozzleGuardianDaemon
-from src.printer import PrinterStatus
+from src.daemon import NozzleGuardianDaemon, CURRENT_SCHEMA_VERSION
+from src.printer import PrinterStatus, PurgeJobStatus
 
 
 @pytest.fixture
@@ -192,11 +192,31 @@ async def test_shared_client_lock_serializes_daemon_and_api(daemon_instance):
 
     async with client._lock:
         assert client.is_busy
-        # When lock is held, execute_purge_job must reject immediately
-        rejected = await client.execute_purge_job(daemon_instance.state_file, mode="k")
-        assert rejected is False
+        # When lock is held, execute_purge_job must reject immediately with status BUSY
+        job_res = await client.execute_purge_job(daemon_instance.state_file, mode="k")
+        assert job_res.status == PurgeJobStatus.BUSY
 
     assert not client.is_busy
+
+
+def test_legacy_state_schema_migration_resets_auto_purge(daemon_instance):
+    """Verifies that an existing state file without schema_version or schema_version < 2
+    resets auto_purge_enabled to False to mandate explicit opt-in confirmation."""
+    legacy_v1_state = {
+        "last_mono_pages": 500,
+        "last_color_pages": 200,
+        "last_mono_activity": datetime.now(timezone.utc).isoformat(),
+        "last_color_activity": datetime.now(timezone.utc).isoformat(),
+        "auto_purge_enabled": True  # Was enabled in v1
+    }
+    daemon_instance.save_state(legacy_v1_state)
+
+    # Load through daemon logic
+    migrated = daemon_instance.load_state()
+    assert migrated["schema_version"] == CURRENT_SCHEMA_VERSION
+    assert migrated["auto_purge_enabled"] is False  # Must be reset
+    assert migrated["last_mono_pages"] == 500
+    assert migrated["last_color_pages"] == 200
 
 
 def test_fail_closed_api_key_generation(tmp_path, monkeypatch):

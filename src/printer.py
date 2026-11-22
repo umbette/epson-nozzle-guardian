@@ -4,6 +4,7 @@ import logging
 import re
 import subprocess
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 from typing import Optional
 import httpx
@@ -29,6 +30,19 @@ IPP_PRINT_JOB_TEST = """{
   FILE $filename
 }
 """
+
+
+class PurgeJobStatus(str, Enum):
+    ACCEPTED = "accepted"
+    BUSY = "busy"
+    REJECTED = "rejected"
+    ERROR = "error"
+
+
+@dataclass
+class PurgeJobResult:
+    status: PurgeJobStatus
+    message: str
 
 
 @dataclass
@@ -65,17 +79,21 @@ class EpsonPrinterClient:
         """Returns True if a print job is currently being dispatched or executing."""
         return self._lock.locked()
 
-    async def execute_purge_job(self, file_path: Path, mode: str) -> bool:
+    async def execute_purge_job(self, file_path: Path, mode: str) -> PurgeJobResult:
         """
         Atomically executes a purge job, serializing dispatches across both background daemon
         and HTTP API routes to prevent overlapping print jobs on the printer's IPP queue.
+        Returns a structured PurgeJobResult.
         """
         if self._lock.locked():
             logger.warning("Purge job execution rejected: printer client lock is held by another active job.")
-            return False
+            return PurgeJobResult(status=PurgeJobStatus.BUSY, message="Printer client is currently busy executing another job.")
 
         async with self._lock:
-            return await asyncio.to_thread(self.print_purge_file, file_path, mode=mode)
+            success = await asyncio.to_thread(self.print_purge_file, file_path, mode=mode)
+            if success:
+                return PurgeJobResult(status=PurgeJobStatus.ACCEPTED, message=f"Print job for mode '{mode}' successfully dispatched to printer.")
+            return PurgeJobResult(status=PurgeJobStatus.ERROR, message=f"IPP print job execution failed for {file_path.name}.")
 
     def _ensure_test_template(self) -> None:
         self.test_template_path.parent.mkdir(parents=True, exist_ok=True)

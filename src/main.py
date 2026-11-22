@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 from .config import settings
 from .generator import PatternGenerator
-from .printer import EpsonPrinterClient, PrinterStatus
+from .printer import EpsonPrinterClient, PrinterStatus, PurgeJobStatus
 from .daemon import NozzleGuardianDaemon
 
 logging.basicConfig(
@@ -80,7 +80,6 @@ def _verify_api_key(x_api_key: Optional[str]):
 async def health():
     return {
         "status": "ok",
-        "printer_host": settings.printer.host,
         "auth_enforced": not settings.allow_unauthenticated
     }
 
@@ -133,19 +132,21 @@ async def trigger_purge(mode: str, x_api_key: Optional[str] = Header(None)):
         logger.info(f"Compiling missing pattern for mode: {mode}")
         pwg_file = await asyncio.to_thread(generator.compile_pwg, mode)
 
-    success = await printer_client.execute_purge_job(pwg_file, mode=mode)
-    if not success and printer_client.is_busy:
+    job_res = await printer_client.execute_purge_job(pwg_file, mode=mode)
+    if job_res.status == PurgeJobStatus.BUSY:
         raise HTTPException(status_code=409, detail="A purge print job is already in progress.")
 
-    if not success:
-        # Fallback to PNG if PWG failed or wasn't supported
+    if job_res.status == PurgeJobStatus.ERROR:
+        # Fallback to PNG only if PWG format execution failed with error (never on busy/rejected)
         png_file = Path(f"/app/assets/purge_{mode}.png")
         if png_file.exists() and pwg_file.suffix == ".pwg":
             logger.info("Retrying with raw PNG format fallback...")
-            success = await printer_client.execute_purge_job(png_file, mode=mode)
+            job_res = await printer_client.execute_purge_job(png_file, mode=mode)
+            if job_res.status == PurgeJobStatus.BUSY:
+                raise HTTPException(status_code=409, detail="A purge print job is already in progress.")
 
-    if not success:
-        raise HTTPException(status_code=500, detail="IPP print job execution failed.")
+    if job_res.status != PurgeJobStatus.ACCEPTED:
+        raise HTTPException(status_code=500, detail=f"IPP print job execution failed: {job_res.message}")
 
     return PurgeResponse(
         success=True,
