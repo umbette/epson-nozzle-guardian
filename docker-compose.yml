@@ -12,8 +12,10 @@ services:
       - PRINTER_PORT=${PRINTER_PORT:-${EPSON_PORT:-631}}
       - PRINTER_USE_TLS=${PRINTER_USE_TLS:-${EPSON_USE_TLS:-true}}
       - INACTIVITY_DAYS=${INACTIVITY_DAYS:-5}
+      - AUTO_PURGE_ENABLED=${AUTO_PURGE_ENABLED:-false}
     volumes:
       - ./assets:/app/assets
       - ./config.yaml:/app/config.yaml:ro
+      - ./data:/app/data
     security_opt:
       - no-new-privileges:true

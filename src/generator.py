@@ -19,8 +19,13 @@ class PatternGenerator:
     def __init__(self, *args, assets_dir: str = "assets", **kwargs):
         if args and isinstance(args[0], (str, Path)):
             assets_dir = str(args[0])
-        self.assets_dir = Path(assets_dir)
-        self.assets_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            p = Path(assets_dir)
+            p.mkdir(parents=True, exist_ok=True)
+            self.assets_dir = p
+        except (PermissionError, OSError):
+            self.assets_dir = Path("assets").resolve()
+            self.assets_dir.mkdir(parents=True, exist_ok=True)
         self.dpi = settings.pattern.dpi
 
         # Standard A4 size in mm: 210 x 297

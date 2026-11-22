@@ -27,3 +27,32 @@ def test_parse_web_info_login_or_invalid_rejects():
     assert status.state == "unknown"
     assert status.monochrome_pages is None
     assert status.color_pages is None
+    assert status.has_channel_telemetry is False
+
+def test_parse_web_info_only_total():
+    client = EpsonPrinterClient()
+    html = "<html><body><div>Total Pages Printed : 350</div></body></html>"
+    status = client._parse_web_info(html)
+    assert status.online is True
+    assert status.total_pages == 350
+    assert status.monochrome_pages is None
+    assert status.color_pages is None
+    assert status.has_channel_telemetry is False
+
+def test_parse_web_info_only_monochrome():
+    client = EpsonPrinterClient()
+    html = "<html><body><div>Pagine in bianco e nero: 210</div></body></html>"
+    status = client._parse_web_info(html)
+    assert status.online is True
+    assert status.monochrome_pages == 210
+    assert status.color_pages is None
+    assert status.has_channel_telemetry is False
+
+def test_parse_web_info_only_color():
+    client = EpsonPrinterClient()
+    html = "<html><body><div>Pagine a colori: 88</div></body></html>"
+    status = client._parse_web_info(html)
+    assert status.online is True
+    assert status.monochrome_pages is None
+    assert status.color_pages == 88
+    assert status.has_channel_telemetry is False

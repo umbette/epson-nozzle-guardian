@@ -32,6 +32,8 @@ htmlcov/
 # Local Environment & Secrets
 .env
 local_config.yaml
+data/
+*.tmp
 
 # IDEs
 .vscode/

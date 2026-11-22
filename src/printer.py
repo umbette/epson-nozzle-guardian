@@ -40,6 +40,11 @@ class PrinterStatus:
     state: str = "unknown"
     error_message: Optional[str] = None
 
+    @property
+    def has_channel_telemetry(self) -> bool:
+        """Returns True if individual channel counters (mono and color) are both exposed."""
+        return self.monochrome_pages is not None and self.color_pages is not None
+
 
 class EpsonPrinterClient:
     def __init__(self):

@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import yaml
 from pydantic import BaseModel, Field
@@ -13,6 +13,7 @@ class PrinterConfig(BaseModel):
     timeout_sec: float = 5.0
     inactivity_threshold_days: int = 5
     use_tls: bool = True
+    auto_purge_enabled: bool = False
 
 
 class PatternConfig(BaseModel):
@@ -26,6 +27,7 @@ class PatternConfig(BaseModel):
 class Settings(BaseSettings):
     printer: PrinterConfig = Field(default_factory=PrinterConfig)
     pattern: PatternConfig = Field(default_factory=PatternConfig)
+    api_key: Optional[str] = None
 
     @classmethod
     def load(cls, config_path: str = "config.yaml") -> "Settings":
@@ -54,8 +56,15 @@ class Settings(BaseSettings):
             
         if "INACTIVITY_DAYS" in os.environ:
             printer_data["inactivity_threshold_days"] = int(os.environ["INACTIVITY_DAYS"])
+
+        auto_purge_env = os.getenv("AUTO_PURGE_ENABLED")
+        if auto_purge_env is not None:
+            printer_data["auto_purge_enabled"] = str(auto_purge_env).lower() in ("true", "1", "yes")
             
         data["printer"] = printer_data
+
+        if "API_KEY" in os.environ:
+            data["api_key"] = os.environ["API_KEY"]
 
         return cls(**data)
 
