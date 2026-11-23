@@ -94,12 +94,75 @@ API_KEY=
 ```bash
 docker compose up -d
 ```
-The REST API is now running at `http://localhost:8086`.
+The REST API and standalone Web Dashboard are now live at `http://localhost:8086`.
 
-### 3. Home Assistant Setup
+### 3. Standalone Web Dashboard & Mobile Scanner
+You don't need Home Assistant to use Nozzle Guardian! Open `http://<server-ip>:8086/` in any desktop or smartphone browser:
+* **Live Hardware Telemetry**: Real-time printer online status and independent Mono/Color page counters.
+* **Camera Scan Diagnosis**: Snap a photo of your printed nozzle check sheet directly with your smartphone. Optical computer vision automatically segments channels and highlights missing nozzle rungs.
+* **Interactive Surgical Matrix**: Select any clogged nozzle (1 to 10) across Cyan, Magenta, Yellow, or Black to fire high-frequency acoustic micro-pulses exclusively at that single nozzle.
+
+### 4. Home Assistant Setup (Optional)
 1. Copy `homeassistant/epson_guardian_package.example.yaml` to your `/config/packages/nozzle_guardian_package.yaml`.
 2. Replace `YOUR_SERVER_IP` with your host IP and `mobile_app_YOUR_PHONE_NAME` with your device notify service.
 3. Reload Home Assistant Packages.
+
+---
+
+## 💻 Headless CLI & Systemd Timer (No Docker Required)
+
+For minimalists who prefer native systemd timers or cron over Docker and background daemons:
+
+```bash
+# 1. Install dependencies into a virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+
+# 2. Inspect printer telemetry and channel dormancy
+python -m src.cli check
+
+# 3. Run automated audit via cron (purges only when channels exceed dormancy)
+python -m src.cli check --cron
+
+# 4. Manually trigger a purge or surgical resuscitation
+python -m src.cli purge cmy
+python -m src.cli surgical --channel cyan --step 4 --bursts 5
+
+# 5. Diagnose a scanned test sheet from terminal
+python -m src.cli scan path/to/printout.jpg
+
+# 6. Generate ready-to-install systemd service & timer units
+python -m src.cli systemd
+```
+
+---
+
+## 💡 Architecture Decisions & FAQ
+
+### Q1: Why not just use a simple 5-day cron timer that prints a basic SVG strip?
+**The "Mono vs. Color Asymmetry Trap":**
+A blind timer that resets whenever you print has a critical blind spot: **routine document printing**. 
+Most households and offices print text documents, shipping labels, recipes, or tax forms in black & white every week. A naive timer sees "Printed today → Reset 5-day timer". 
+Meanwhile, the **Cyan, Magenta, and Yellow (CMY)** nozzles sit completely idle for 3–6 months and bake solid. 
+
+Nozzle Guardian queries internal hardware telemetry (`/PRESENTATION/HTML/TOP` page counters) to **decouple Monochrome and Color tracking**. If you print 50 text pages, only the Black timer resets; CMY channels will still trigger a targeted color micro-purge when their threshold expires.
+
+### Q2: Does it work over USB?
+**Yes! Via the driverless IPP-over-USB standard.**
+Modern Linux distributions natively support the USB-IF IPP-over-USB standard through the `ipp-usb` package (standard in Debian, Ubuntu, Fedora, Arch):
+```bash
+sudo apt install ipp-usb
+```
+When an IPP-capable USB printer is plugged in, `ipp-usb` automatically exposes an HTTP/IPP endpoint locally on `http://127.0.0.1:60000`. Configure Nozzle Guardian with `PRINTER_HOST=127.0.0.1` and `PRINTER_PORT=60000` to enjoy full driverless IPP communication without Wi-Fi.
+
+### Q3: Won't re-feeding scrap paper dozens of times cause jams?
+**Paper Handling & Practical Reuse:**
+Repeatedly running the exact same sheet 20+ times through a printer can cause paper jams due to edge curling, humidity, and roller static.
+Nozzle Guardian was deliberately designed with a **2.5 mm micro-stripe at the absolute top margin**:
+* **Domestic Reuse Pile:** The sheet can immediately go into your daily scratch paper, recipe, or quick-draft tray. Over 98% of the A4 page remains pristine.
+* **Flipping Once:** You can flip the sheet once to use the other side.
+* You do **not** need to cycle the same piece of paper indefinitely—a single scrap sheet every couple of weeks easily covers all preventive maintenance.
 
 ---
 

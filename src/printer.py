@@ -163,10 +163,13 @@ class EpsonPrinterClient:
         if total_pages is None and mono_pages is not None and color_pages is not None:
             total_pages = mono_pages + color_pages
 
-        # Validate that we actually found meaningful printer telemetry
+        # Validate that we actually found meaningful printer telemetry or printer identity
         has_telemetry = any(v is not None for v in (mono_pages, color_pages, total_pages))
-        if not has_telemetry:
-            # Did not find genuine printer telemetry: do not assume idle
+        status_match = re.search(r"Printer\s*Status\s*[:=]?\s*(Available|Idle|Ready|Printing|Pronto|Disponibile)", text, re.I)
+        is_known_printer = bool(re.search(r"(?:ET-\d+|EcoTank|MegaTank|Smart\s*Tank|Product\s*Status)", text, re.I))
+
+        if not has_telemetry and not status_match and not is_known_printer:
+            # Did not find genuine printer telemetry or valid printer status page
             return PrinterStatus(
                 online=False,
                 monochrome_pages=None,
@@ -176,12 +179,13 @@ class EpsonPrinterClient:
                 error_message="Web endpoint responded with HTTP 200 but contained no recognizable printer telemetry"
             )
 
+        state = "printing" if (status_match and "print" in status_match.group(1).lower()) else "idle"
         return PrinterStatus(
             online=True,
             monochrome_pages=mono_pages,
             color_pages=color_pages,
             total_pages=total_pages,
-            state="idle"
+            state=state
         )
 
     def _check_ipp_status(self) -> PrinterStatus:
@@ -197,6 +201,14 @@ class EpsonPrinterClient:
             if res.returncode == 0:
                 return PrinterStatus(online=True, state="idle")
             return PrinterStatus(online=False, state="offline", error_message=res.stderr)
+        except FileNotFoundError:
+            # ipptool not installed locally (e.g. headless host): fallback to TCP port connectivity
+            try:
+                import socket
+                with socket.create_connection((self.host, self.port), timeout=2.0):
+                    return PrinterStatus(online=True, state="idle", error_message="ipptool not installed; verified online via TCP port")
+            except Exception as se:
+                return PrinterStatus(online=False, state="offline", error_message=f"ipptool not found and TCP connection failed: {se}")
         except Exception as e:
             return PrinterStatus(online=False, state="offline", error_message=str(e))
 
