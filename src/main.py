@@ -2,14 +2,16 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Optional
-from fastapi import FastAPI, HTTPException, Header
-from pydantic import BaseModel
+from typing import Optional, Dict, Any
+from fastapi import FastAPI, HTTPException, Header, UploadFile, File, Form
+from fastapi.responses import HTMLResponse
+from pydantic import BaseModel, Field
 
 from .config import settings
 from .generator import PatternGenerator
 from .printer import EpsonPrinterClient, PrinterStatus, PurgeJobStatus
 from .daemon import NozzleGuardianDaemon
+from .scanner import analyze_nozzle_sheet
 
 logging.basicConfig(
     level=logging.INFO,
@@ -54,8 +56,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Nozzle Guardian",
-    description="Proactive anti-clogging and targeted purge daemon for EcoTank and inkjet printers",
-    version="1.0.0",
+    description="Proactive anti-clogging, diagnostic inspection, and surgical single-nozzle purge daemon",
+    version="1.1.0",
     lifespan=lifespan
 )
 
@@ -68,6 +70,12 @@ class PurgeResponse(BaseModel):
 
 class AutoPurgeToggleRequest(BaseModel):
     enabled: bool
+
+
+class SurgicalPurgeRequest(BaseModel):
+    channel: str = Field(..., description="Target color channel ('cyan', 'magenta', 'yellow', 'black')")
+    step: int = Field(..., ge=1, le=10, description="Target nozzle step number (1 to 10)")
+    bursts: int = Field(default=5, ge=1, le=9, description="Number of acoustic micro-burst lines (1-9)")
 
 
 def _verify_api_key(x_api_key: Optional[str]):
@@ -107,6 +115,41 @@ async def toggle_auto_purge(req: AutoPurgeToggleRequest, x_api_key: Optional[str
     return {"status": "ok", "auto_purge_enabled": req.enabled}
 
 
+@app.post("/purge/surgical", response_model=PurgeResponse)
+async def trigger_surgical_purge(req: SurgicalPurgeRequest, x_api_key: Optional[str] = Header(None)):
+    """
+    Triggers a surgical single-nozzle resuscitation pass.
+    Fires micro-burst acoustic pressure pulses exclusively at the specified nozzle step coordinate.
+    """
+    _verify_api_key(x_api_key)
+
+    if printer_client.is_busy:
+        raise HTTPException(status_code=409, detail="A purge print job is already in progress.")
+
+    status = await printer_client.get_status()
+    if not status.online:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Printer at {settings.printer.host} is offline or unreachable."
+        )
+
+    try:
+        pwg_file = await asyncio.to_thread(generator.compile_surgical_pwg, req.channel, req.step, req.bursts)
+    except Exception as e:
+        logger.error(f"Surgical pattern compilation failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to compile surgical pattern: {e}")
+
+    job_res = await printer_client.execute_purge_job(pwg_file, mode=f"surgical_{req.channel}_s{req.step}")
+    if job_res.status != PurgeJobStatus.ACCEPTED:
+        raise HTTPException(status_code=500, detail=f"Surgical print job execution failed: {job_res.message}")
+
+    return PurgeResponse(
+        success=True,
+        mode=f"surgical_{req.channel}_{req.step}",
+        message=f"Targeted acoustic resuscitation pass dispatched for {req.channel.upper()} nozzle step #{req.step} ({req.bursts} micro-bursts)."
+    )
+
+
 @app.post("/purge/{mode}", response_model=PurgeResponse)
 async def trigger_purge(mode: str, x_api_key: Optional[str] = Header(None)):
     _verify_api_key(x_api_key)
@@ -118,7 +161,6 @@ async def trigger_purge(mode: str, x_api_key: Optional[str] = Header(None)):
     if printer_client.is_busy:
         raise HTTPException(status_code=409, detail="A purge print job is already in progress.")
 
-    # Check printer status first
     status = await printer_client.get_status()
     if not status.online:
         raise HTTPException(
@@ -126,8 +168,7 @@ async def trigger_purge(mode: str, x_api_key: Optional[str] = Header(None)):
             detail=f"Printer at {settings.printer.host} is offline or unreachable."
         )
 
-    # Locate raster or compile if missing
-    pwg_file = Path(f"/app/assets/purge_{mode}.pwg")
+    pwg_file = generator.get_pwg_path(mode)
     if not pwg_file.exists():
         logger.info(f"Compiling missing pattern for mode: {mode}")
         pwg_file = await asyncio.to_thread(generator.compile_pwg, mode)
@@ -137,8 +178,7 @@ async def trigger_purge(mode: str, x_api_key: Optional[str] = Header(None)):
         raise HTTPException(status_code=409, detail="A purge print job is already in progress.")
 
     if job_res.status == PurgeJobStatus.ERROR:
-        # Fallback to PNG only if PWG format execution failed with error (never on busy/rejected)
-        png_file = Path(f"/app/assets/purge_{mode}.png")
+        png_file = generator.get_png_path(mode)
         if png_file.exists() and pwg_file.suffix == ".pwg":
             logger.info("Retrying with raw PNG format fallback...")
             job_res = await printer_client.execute_purge_job(png_file, mode=mode)
@@ -153,3 +193,316 @@ async def trigger_purge(mode: str, x_api_key: Optional[str] = Header(None)):
         mode=mode,
         message=f"Targeted purge pattern '{mode.upper()}' successfully dispatched to printer."
     )
+
+
+@app.post("/scan/nozzle-health")
+async def scan_nozzle_sheet(
+    file: Optional[UploadFile] = File(None),
+    x_api_key: Optional[str] = Header(None)
+):
+    """
+    Parses an uploaded image or photo of the Nozzle Guardian test printout,
+    detects missing steps via color continuity profiling, and returns actionable recommendations.
+    """
+    _verify_api_key(x_api_key)
+
+    if not file:
+        raise HTTPException(status_code=400, detail="No image file uploaded.")
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+
+    report = await asyncio.to_thread(analyze_nozzle_sheet, content)
+    return report
+
+
+@app.get("/", response_class=HTMLResponse)
+@app.get("/ui", response_class=HTMLResponse)
+async def web_dashboard():
+    """Renders the standalone, responsive Nozzle Guardian Web Dashboard."""
+    api_token = settings.api_key or ""
+    return HTMLResponse(content=HTML_DASHBOARD_TEMPLATE.replace("%%API_KEY%%", api_token))
+
+
+HTML_DASHBOARD_TEMPLATE = """<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nozzle Guardian™ — Controllo & Diagnostica Ugelli</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card-bg: #1e293b;
+      --card-border: #334155;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --primary: #38bdf8;
+      --cyan: #06b6d4;
+      --magenta: #ec4899;
+      --yellow: #eab308;
+      --black: #64748b;
+      --success: #22c55e;
+      --danger: #ef4444;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background: var(--bg); color: var(--text); padding: 20px; line-height: 1.5; }
+    .container { max-width: 900px; margin: 0 auto; }
+    header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--card-border); }
+    h1 { font-size: 1.5rem; display: flex; align-items: center; gap: 8px; }
+    .badge { padding: 4px 10px; border-radius: 9999px; font-size: 0.8rem; font-weight: 600; }
+    .badge-online { background: rgba(34, 197, 94, 0.2); color: var(--success); border: 1px solid var(--success); }
+    .badge-offline { background: rgba(239, 68, 68, 0.2); color: var(--danger); border: 1px solid var(--danger); }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-bottom: 24px; }
+    .card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px; padding: 20px; }
+    .card-title { font-size: 1rem; color: var(--text-muted); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; }
+    .stat-val { font-size: 1.8rem; font-weight: 800; color: var(--text); margin-bottom: 4px; }
+    .btn-group { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+    button { background: #2563eb; color: white; border: none; padding: 10px 16px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.9rem; transition: all 0.2s; }
+    button:hover { filter: brightness(1.15); transform: translateY(-1px); }
+    button:active { transform: translateY(0); }
+    button.btn-danger { background: var(--danger); }
+    button.btn-cmy { background: #0891b2; }
+    button.btn-k { background: #475569; }
+    button.btn-scan { background: #8b5cf6; }
+    
+    /* Interactive Nozzle Matrix */
+    .matrix-container { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 16px; }
+    .channel-col { background: #0f172a; padding: 12px; border-radius: 8px; border: 1px solid var(--card-border); text-align: center; }
+    .channel-header { font-weight: 800; font-size: 0.85rem; margin-bottom: 8px; }
+    .step-list { display: flex; flex-direction: column; gap: 4px; }
+    .step-btn { background: #1e293b; border: 1px solid #334155; color: var(--text); padding: 4px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; cursor: pointer; text-align: center; }
+    .step-btn:hover { background: #334155; }
+    .step-btn.selected { background: var(--danger); border-color: var(--danger); color: white; }
+    .surgical-panel { margin-top: 16px; padding: 14px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 8px; display: none; }
+    #toast { position: fixed; bottom: 20px; right: 20px; background: #0284c7; color: white; padding: 12px 20px; border-radius: 8px; font-weight: 600; display: none; box-shadow: 0 4px 12px rgba(0,0,0,0.5); z-index: 100; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🖨️ Nozzle Guardian™ <span style="font-size: 0.8rem; color: var(--primary);">v1.1</span></h1>
+      <span id="printerStatusBadge" class="badge badge-offline">Caricamento...</span>
+    </header>
+
+    <div class="grid">
+      <!-- Status Card -->
+      <div class="card">
+        <div class="card-title">Stato Telemetria Hardware</div>
+        <div id="printerModel" style="font-weight: 600; margin-bottom: 8px;">Connessione in corso...</div>
+        <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px;">
+          Pagine B/N: <strong id="pagesMono">-</strong> | Pagine Colori: <strong id="pagesColor">-</strong>
+        </div>
+        <div class="card-title" style="margin-top: 14px;">Spurghi Preventivi Standard</div>
+        <div class="btn-group">
+          <button onclick="triggerPurge('cmyk')">Spurgo Completo (CMYK)</button>
+          <button class="btn-cmy" onclick="triggerPurge('cmy')">Solo Colori (CMY)</button>
+          <button class="btn-k" onclick="triggerPurge('k')">Solo Nero (K)</button>
+        </div>
+      </div>
+
+      <!-- AI Camera Scanner Card -->
+      <div class="card">
+        <div class="card-title">Diagnostica & Scanner Fotocamera</div>
+        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px;">
+          Inquadra la scaletta a gradini stampata con il tuo smartphone. L'analisi ottica rileva automaticamente eventuali gradini mancanti.
+        </p>
+        <input type="file" id="scanInput" accept="image/*" capture="environment" style="display:none" onchange="handleImageUpload(event)">
+        <button class="btn-scan" onclick="document.getElementById('scanInput').click()">📸 Scansiona con Fotocamera</button>
+        <div id="scanReport" style="margin-top: 12px; font-size: 0.85rem; display: none; padding: 10px; border-radius: 6px; background: #0f172a;"></div>
+      </div>
+    </div>
+
+    <!-- Interactive Surgical Strike Matrix -->
+    <div class="card">
+      <div class="card-title">Matrice Nozzle & Spurgo Chirurgico a Risonanza Acustica</div>
+      <p style="font-size: 0.85rem; color: var(--text-muted);">
+        Seleziona il gradino mancante notato sul foglio di prova per azionare <strong>esclusivamente il singolo cristallo piezoelettrico incriminato</strong> con micro-impulsi ad alta frequenza (zero inchiostro sprecato sugli altri ugelli).
+      </p>
+
+      <div class="matrix-container">
+        <!-- Cyan -->
+        <div class="channel-col" style="border-top: 3px solid var(--cyan);">
+          <div class="channel-header" style="color: var(--cyan);">CIANO</div>
+          <div class="step-list" id="col-cyan"></div>
+        </div>
+        <!-- Magenta -->
+        <div class="channel-col" style="border-top: 3px solid var(--magenta);">
+          <div class="channel-header" style="color: var(--magenta);">MAGENTA</div>
+          <div class="step-list" id="col-magenta"></div>
+        </div>
+        <!-- Yellow -->
+        <div class="channel-col" style="border-top: 3px solid var(--yellow);">
+          <div class="channel-header" style="color: var(--yellow);">GIALLO</div>
+          <div class="step-list" id="col-yellow"></div>
+        </div>
+        <!-- Black -->
+        <div class="channel-col" style="border-top: 3px solid var(--black);">
+          <div class="channel-header" style="color: #cbd5e1;">NERO (K)</div>
+          <div class="step-list" id="col-black"></div>
+        </div>
+      </div>
+
+      <div id="surgicalPanel" class="surgical-panel">
+        <div style="font-weight: 700; color: #fca5a5; margin-bottom: 6px;" id="surgicalTargetText">Target selezionato</div>
+        <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 10px;">
+          Verrà inviato un treno di onde acustiche piezoelettriche mirate esclusivamente a disostruire il menisco dell'ugello selezionato.
+        </p>
+        <button class="btn-danger" id="surgicalFireBtn" onclick="fireSurgicalPurge()">🎯 Lancia Martello Acustico Mirato</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast">Operazione completata con successo!</div>
+
+  <script>
+    const API_KEY = "%%API_KEY%%";
+    let selectedChannel = null;
+    let selectedStep = null;
+
+    function authHeaders(extra = {}) {
+      const h = { ...extra };
+      if (API_KEY) h['x-api-key'] = API_KEY;
+      return h;
+    }
+
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.innerText = msg;
+      t.style.display = 'block';
+      setTimeout(() => { t.style.display = 'none'; }, 4000);
+    }
+
+    async function loadStatus() {
+      try {
+        const res = await fetch('/status');
+        const data = await res.json();
+        const badge = document.getElementById('printerStatusBadge');
+        if (data.online) {
+          badge.className = 'badge badge-online';
+          badge.innerText = '🟢 Online (' + data.state + ')';
+        } else {
+          badge.className = 'badge badge-offline';
+          badge.innerText = '🔴 Offline';
+        }
+        document.getElementById('printerModel').innerText = data.make_and_model || 'Epson EcoTank Series';
+        document.getElementById('pagesMono').innerText = data.monochrome_pages ?? 'N/D';
+        document.getElementById('pagesColor').innerText = data.color_pages ?? 'N/D';
+      } catch (e) {
+        document.getElementById('printerStatusBadge').innerText = '⚠️ Connessione Fallita';
+      }
+    }
+
+    function initMatrix() {
+      const channels = ['cyan', 'magenta', 'yellow', 'black'];
+      channels.forEach(ch => {
+        const col = document.getElementById('col-' + ch);
+        col.innerHTML = '';
+        for (let i = 1; i <= 10; i++) {
+          const btn = document.createElement('button');
+          btn.className = 'step-btn';
+          btn.id = `step-${ch}-${i}`;
+          btn.innerText = `Ugello #${i}`;
+          btn.onclick = () => selectNozzle(ch, i);
+          col.appendChild(btn);
+        }
+      });
+    }
+
+    function selectNozzle(ch, step) {
+      document.querySelectorAll('.step-btn').forEach(b => b.classList.remove('selected'));
+      selectedChannel = ch;
+      selectedStep = step;
+
+      const btn = document.getElementById(`step-${ch}-${step}`);
+      if (btn) btn.classList.add('selected');
+
+      const panel = document.getElementById('surgicalPanel');
+      panel.style.display = 'block';
+      document.getElementById('surgicalTargetText').innerText = `Bersaglio Selezionato: Canale ${ch.toUpperCase()} — Ugello #${step}`;
+    }
+
+    async function fireSurgicalPurge() {
+      if (!selectedChannel || !selectedStep) return;
+      const fireBtn = document.getElementById('surgicalFireBtn');
+      fireBtn.disabled = true;
+      fireBtn.innerText = '⏳ Esecuzione in corso...';
+      try {
+        const res = await fetch('/purge/surgical', {
+          method: 'POST',
+          headers: authHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ channel: selectedChannel, step: selectedStep, bursts: 5 })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          showToast(`✅ Impulso acustico inviato a ${selectedChannel.toUpperCase()} #${selectedStep}!`);
+        } else {
+          showToast('❌ Errore: ' + (data.detail || 'Operazione fallita'));
+        }
+      } catch (e) {
+        showToast('❌ Errore di rete durante lo spurgo chirurgico.');
+      } finally {
+        fireBtn.disabled = false;
+        fireBtn.innerText = '🎯 Lancia Martello Acustico Mirato';
+      }
+    }
+
+    async function triggerPurge(mode) {
+      try {
+        showToast(`🖨️ Invio lavoro di spurgo '${mode.toUpperCase()}'...`);
+        const res = await fetch(`/purge/${mode}`, {
+          method: 'POST',
+          headers: authHeaders()
+        });
+        const data = await res.json();
+        if (res.ok) {
+          showToast(`✅ Micro-stampa '${mode.toUpperCase()}' inviata con successo!`);
+        } else {
+          showToast('❌ Errore: ' + (data.detail || 'Spurgo fallito'));
+        }
+      } catch (e) {
+        showToast('❌ Errore di connessione con il demone.');
+      }
+    }
+
+    async function handleImageUpload(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const rep = document.getElementById('scanReport');
+      rep.style.display = 'block';
+      rep.innerHTML = '🔍 Analisi ottica fotometrica in corso...';
+
+      const formData = new FormData();
+      formData.append('file', file);
+
+      try {
+        const res = await fetch('/scan/nozzle-health', {
+          method: 'POST',
+          headers: authHeaders(),
+          body: formData
+        });
+        const data = await res.json();
+        if (data.success) {
+          let html = `<strong>Salute Complessiva Ugelli: ${data.overall_health_pct}%</strong><br>`;
+          if (data.target_channel && data.target_step) {
+            html += `<span style="color: #f87171;">⚠️ Rilevato gradino mancante su <strong>${data.target_channel.toUpperCase()} #${data.target_step}</strong>.</span>`;
+            selectNozzle(data.target_channel, data.target_step);
+          } else {
+            html += `<span style="color: #4ade80;">✅ Tutti i 40 segmenti analizzati risultano continui e puliti!</span>`;
+          }
+          rep.innerHTML = html;
+        } else {
+          rep.innerHTML = '⚠️ Analisi non riuscita: ' + (data.error || 'Immagine non chiara');
+        }
+      } catch (err) {
+        rep.innerHTML = '❌ Errore durante l\\'upload dell\\'immagine.';
+      }
+    }
+
+    initMatrix();
+    loadStatus();
+    setInterval(loadStatus, 15000);
+  </script>
+</body>
+</html>"""
