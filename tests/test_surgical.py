@@ -70,10 +70,20 @@ def test_web_ui_endpoint():
     assert "Nozzle Guardian" in resp.text
     assert "Spurgo Chirurgico" in resp.text
     assert "Scanner Fotocamera" in resp.text
+    assert 'rel="manifest"' in resp.text
 
     resp_ui = client.get("/ui")
     assert resp_ui.status_code == 200
     assert "Nozzle Guardian" in resp_ui.text
+
+    # PWA Endpoints
+    resp_manifest = client.get("/manifest.json")
+    assert resp_manifest.status_code == 200
+    assert resp_manifest.json()["display"] == "standalone"
+
+    resp_sw = client.get("/sw.js")
+    assert resp_sw.status_code == 200
+    assert "addEventListener" in resp_sw.text
 
 def test_surgical_purge_endpoint(tmp_path):
     client = TestClient(app)

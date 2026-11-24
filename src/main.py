@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional, Dict, Any
 from fastapi import FastAPI, HTTPException, Header, UploadFile, File, Form
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
 
 from .config import settings
@@ -217,6 +217,36 @@ async def scan_nozzle_sheet(
     return report
 
 
+@app.get("/manifest.json")
+async def pwa_manifest():
+    """Returns standard PWA manifest for Add to Home Screen on mobile/desktop."""
+    return JSONResponse(content={
+        "name": "Nozzle Guardian™",
+        "short_name": "NozzleGuardian",
+        "start_url": "/",
+        "display": "standalone",
+        "background_color": "#0f172a",
+        "theme_color": "#0f172a",
+        "description": "Controllo, telemetria e diagnosi ottica ugelli stampante",
+        "icons": [
+            {
+                "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🖨️</text></svg>",
+                "sizes": "192x192 512x512",
+                "type": "image/svg+xml"
+            }
+        ]
+    })
+
+
+@app.get("/sw.js")
+async def pwa_service_worker():
+    """Lightweight service worker for standalone PWA capability."""
+    return Response(
+        content="self.addEventListener('fetch', (e) => {});",
+        media_type="application/javascript"
+    )
+
+
 @app.get("/", response_class=HTMLResponse)
 @app.get("/ui", response_class=HTMLResponse)
 async def web_dashboard():
@@ -230,6 +260,10 @@ HTML_DASHBOARD_TEMPLATE = """<!DOCTYPE html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f172a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="/manifest.json">
   <title>Nozzle Guardian™ — Controllo & Diagnostica Ugelli</title>
   <style>
     :root {
@@ -503,6 +537,10 @@ HTML_DASHBOARD_TEMPLATE = """<!DOCTYPE html>
     initMatrix();
     loadStatus();
     setInterval(loadStatus, 15000);
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    }
   </script>
 </body>
 </html>"""
