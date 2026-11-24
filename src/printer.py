@@ -3,12 +3,13 @@ import os
 import logging
 import re
 import subprocess
+import warnings
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from typing import Optional
 import httpx
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
 
 from .config import settings
 
@@ -45,6 +46,17 @@ class PurgeJobResult:
     message: str
 
 
+VENDOR_ENDPOINTS = [
+    "/PRESENTATION/HTML/TOP/PRTINFO.HTML",      # Epson EcoTank primary
+    "/PRESENTATION/ADVANCED/INFO_PRTINFO.HTML", # Epson EcoTank advanced
+    "/DevMgmt/ProductUsageDyn.xml",             # HP Smart Tank & OfficeJet (XML)
+    "/device/status.html",                      # Canon MegaTank modern EWS
+    "/index.html",                              # Canon / Generic web status
+    "/etc/mnt_info.html",                       # Brother Inkvestment maintenance
+    "/status.html"                              # Brother / Generic
+]
+
+
 @dataclass
 class PrinterStatus:
     online: bool
@@ -53,6 +65,8 @@ class PrinterStatus:
     total_pages: Optional[int] = None
     state: str = "unknown"
     error_message: Optional[str] = None
+    make_and_model: Optional[str] = None
+    head_technology: str = "piezo"  # 'piezo' (Acoustic resonance safe) or 'thermal' (BubbleJet)
 
     @property
     def has_channel_telemetry(self) -> bool:
@@ -105,59 +119,70 @@ class EpsonPrinterClient:
 
     async def get_status(self) -> PrinterStatus:
         """
-        Polls the printer's Web Config HTML endpoint to parse page counters.
+        Polls the printer's Web Config / EWS endpoints to parse page counters.
+        Probes standard candidate paths across Epson, HP, Canon, and Brother devices.
         Follows redirects and disables SSL verification for self-signed certificates.
         """
         schemes = ["https", "http"] if self.use_tls else ["http", "https"]
-        for scheme in schemes:
-            url = f"{scheme}://{self.host}/PRESENTATION/HTML/TOP/PRTINFO.HTML"
-            try:
-                async with httpx.AsyncClient(timeout=self.timeout, verify=False, follow_redirects=True) as client:
-                    resp = await client.get(url)
-                    if resp.status_code == 200:
-                        parsed = self._parse_web_info(resp.text)
-                        if parsed.monochrome_pages is not None or parsed.total_pages is not None or parsed.online:
-                            return parsed
-                    else:
-                        logger.warning(f"Web Config on {url} returned status {resp.status_code}")
-            except Exception as e:
-                logger.debug(f"Query {url} failed: {e}")
+        for endpoint in VENDOR_ENDPOINTS:
+            for scheme in schemes:
+                url = f"{scheme}://{self.host}{endpoint}"
+                try:
+                    async with httpx.AsyncClient(timeout=self.timeout, verify=False, follow_redirects=True) as client:
+                        resp = await client.get(url)
+                        if resp.status_code == 200:
+                            parsed = self._parse_web_info(resp.text)
+                            if parsed.monochrome_pages is not None or parsed.total_pages is not None or parsed.online:
+                                return parsed
+                except Exception as e:
+                    logger.debug(f"Query {url} failed: {e}")
 
         # Fallback: check if IPP port is responsive asynchronously without blocking event loop
         return await asyncio.to_thread(self._check_ipp_status)
 
-    def _parse_web_info(self, html: str) -> PrinterStatus:
-        soup = BeautifulSoup(html, "html.parser")
-        text = soup.get_text(separator=" ")
-
+    def _parse_web_info(self, raw_content: str) -> PrinterStatus:
         mono_pages = None
         color_pages = None
         total_pages = None
 
-        # Robust regexes capturing English, Italian, table formats, and abbreviations
-        # e.g. "Monochrome : 350", "B&W : 350", "Pagine in bianco e nero : 350", "B/N : 350"
-        mono_match = re.search(
-            r"(?:Monochrome(?:\s*Pages?)?|B/?W|Black\s*&\s*White|Pagine\s*(?:in\s*)?bianco\s*e\s*nero|Monocromatic[oe]|B\s*e\s*N)\s*[:=]?\s*(\d+)",
-            text, re.I
-        )
-        if mono_match:
-            mono_pages = int(mono_match.group(1))
+        # 1. HP EWS XML Format (ProductUsageDyn.xml)
+        if "ProductUsageDyn" in raw_content or "pudyn:" in raw_content:
+            hp_mono = re.search(r"<(?:pudyn:)?MonochromeImpressions>(\d+)</(?:pudyn:)?MonochromeImpressions>", raw_content)
+            hp_color = re.search(r"<(?:pudyn:)?ColorImpressions>(\d+)</(?:pudyn:)?ColorImpressions>", raw_content)
+            hp_total = re.search(r"<(?:pudyn:)?TotalImpressions>(\d+)</(?:pudyn:)?TotalImpressions>", raw_content)
+            if hp_mono: mono_pages = int(hp_mono.group(1))
+            if hp_color: color_pages = int(hp_color.group(1))
+            if hp_total: total_pages = int(hp_total.group(1))
 
-        # e.g. "Color : 85", "Colour : 85", "Pagine a colori : 85", "Colori : 85"
-        color_match = re.search(
-            r"(?:Colou?r(?:\s*Pages?)?|Pagine\s*a\s*colori|Color[ei])\s*[:=]?\s*(\d+)",
-            text, re.I
-        )
-        if color_match:
-            color_pages = int(color_match.group(1))
+        # 2. HTML Text Extraction & Regex Parsing (Epson, Canon, Brother)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
+            soup = BeautifulSoup(raw_content, "html.parser")
+        text = soup.get_text(separator=" ")
 
-        # e.g. "Total Number of Pages", "Total Pages Printed", "Pagine totali", "Totale pagine"
-        total_match = re.search(
-            r"(?:Total\s*(?:Number\s*of\s*)?Pages?(?:\s*Printed)?|Pagine\s*totali|Totale\s*pagine|Numero\s*totale\s*di\s*pagine)\s*[:=]?\s*(\d+)",
-            text, re.I
-        )
-        if total_match:
-            total_pages = int(total_match.group(1))
+        if mono_pages is None:
+            mono_match = re.search(
+                r"(?:Monochrome|B/?W|Black\s*(?:&|and)\s*White|Pagine\s*(?:in\s*)?bianco\s*e\s*nero|Monocromatic[oe]|B\s*e\s*N)(?:\s*(?:Pages?|Impressions?))?\s*[:=]?\s*(\d+)",
+                text, re.I
+            )
+            if mono_match:
+                mono_pages = int(mono_match.group(1))
+
+        if color_pages is None:
+            color_match = re.search(
+                r"(?:Colou?r|Pagine\s*a\s*colori|Color[ei])(?:\s*(?:Pages?|Impressions?))?\s*[:=]?\s*(\d+)",
+                text, re.I
+            )
+            if color_match:
+                color_pages = int(color_match.group(1))
+
+        if total_pages is None:
+            total_match = re.search(
+                r"(?:Total\s*(?:Number\s*of\s*)?Pages?(?:\s*Printed)?|Total\s*Impressions|Pagine\s*totali|Totale\s*pagine|Numero\s*totale\s*di\s*pagine|Page\s*Counter)\s*[:=]?\s*(\d+)",
+                text, re.I
+            )
+            if total_match:
+                total_pages = int(total_match.group(1))
 
         # Infer total if missing
         if total_pages is None and mono_pages is not None and color_pages is not None:
@@ -166,10 +191,9 @@ class EpsonPrinterClient:
         # Validate that we actually found meaningful printer telemetry or printer identity
         has_telemetry = any(v is not None for v in (mono_pages, color_pages, total_pages))
         status_match = re.search(r"Printer\s*Status\s*[:=]?\s*(Available|Idle|Ready|Printing|Pronto|Disponibile)", text, re.I)
-        is_known_printer = bool(re.search(r"(?:ET-\d+|EcoTank|MegaTank|Smart\s*Tank|Product\s*Status)", text, re.I))
+        is_known_printer = bool(re.search(r"(?:ET-\d+|EcoTank|MegaTank|Smart\s*Tank|PIXMA|ProductUsageDyn|Product\s*Status)", raw_content, re.I))
 
         if not has_telemetry and not status_match and not is_known_printer:
-            # Did not find genuine printer telemetry or valid printer status page
             return PrinterStatus(
                 online=False,
                 monochrome_pages=None,
@@ -179,13 +203,33 @@ class EpsonPrinterClient:
                 error_message="Web endpoint responded with HTTP 200 but contained no recognizable printer telemetry"
             )
 
+        # Identify Manufacturer & Printhead Technology
+        content_lower = raw_content.lower()
+        make_and_model = "Inkjet Printer"
+        head_technology = "piezo"
+
+        if "epson" in content_lower or "ecotank" in content_lower or "et-" in content_lower:
+            make_and_model = "Epson EcoTank Series"
+            head_technology = "piezo"
+        elif "brother" in content_lower or "dcp-" in content_lower or "mfc-" in content_lower:
+            make_and_model = "Brother Inkvestment Series"
+            head_technology = "piezo"
+        elif "canon" in content_lower or "megatank" in content_lower or "pixma" in content_lower or "maxify" in content_lower:
+            make_and_model = "Canon MegaTank Series"
+            head_technology = "thermal"
+        elif "hp" in content_lower or "smart tank" in content_lower or "productusagedyn" in content_lower or "deskjet" in content_lower:
+            make_and_model = "HP Smart Tank Series"
+            head_technology = "thermal"
+
         state = "printing" if (status_match and "print" in status_match.group(1).lower()) else "idle"
         return PrinterStatus(
             online=True,
             monochrome_pages=mono_pages,
             color_pages=color_pages,
             total_pages=total_pages,
-            state=state
+            state=state,
+            make_and_model=make_and_model,
+            head_technology=head_technology
         )
 
     def _check_ipp_status(self) -> PrinterStatus:
