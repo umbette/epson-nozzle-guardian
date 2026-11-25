@@ -44,3 +44,12 @@ data/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Android Gradle builds & signing secrets
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/out_android/
+*.jks
+*.keystore

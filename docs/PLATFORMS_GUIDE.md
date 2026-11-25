@@ -4,7 +4,11 @@
 
 ---
 
-## 1. Smartphone Attivo del Proprietario (iPhone iOS & Android)
+## 1. Smartphone Attivo del Proprietario (Android App Nativa & iPhone iOS)
+
+### App Android Nativa (`NozzleGuardian-Android.apk` — Zero PC per Stampanti Wi-Fi)
+1. Scarica **`NozzleGuardian-Android.apk`** da **[GitHub Releases](https://github.com/umbette/nozzle-guardian/releases/latest)** (`android/` è compilata in Kotlin + Jetpack Compose + WorkManager).
+2. Tocca **Cerca mDNS** per trovare la stampante Wi-Fi in LAN, attiva l'auto-spurgo periodico (controllo in background ogni 12h su Wi-Fi domestico), scansiona il foglio con la fotocamera o spara un singolo ugello 1–10. *(Le stampanti **solo USB** come Canon G2770 richiedono invece l'App Desktop PC/Mac o Home Assistant).*
 
 ### PWA Mobile & Scanner Fotocamera (iOS Safari & Android Chrome)
 1. Apri `http://<ip-del-nodo>:8086/` dal browser dello smartphone (su Home Assistant si apre direttamente in **Ingress**).

@@ -2,6 +2,7 @@
 
 [![CI Test Suite](https://github.com/umbette/nozzle-guardian/actions/workflows/ci.yml/badge.svg)](https://github.com/umbette/nozzle-guardian/actions/workflows/ci.yml)
 [![Desktop Apps](https://github.com/umbette/nozzle-guardian/actions/workflows/build-desktop.yml/badge.svg)](https://github.com/umbette/nozzle-guardian/actions/workflows/build-desktop.yml)
+[![Android App](https://github.com/umbette/nozzle-guardian/actions/workflows/build-android.yml/badge.svg)](https://github.com/umbette/nozzle-guardian/actions/workflows/build-android.yml)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPLv3-blue.svg)](LICENSE)
 [![Hardware License: PolyForm NC](https://img.shields.io/badge/Dongle%20Firmware%20%26%20CAD-Noncommercial-orange.svg)](LICENSE-COMMERCIAL-HARDWARE)
 [![Add to Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fumbette%2Fnozzle-guardian)
@@ -78,7 +79,11 @@ See [COMPATIBILITY.md](COMPATIBILITY.md) for tested models.
 1. Download the pre-built archive from **[GitHub Releases](https://github.com/umbette/nozzle-guardian/releases/latest)** (`NozzleGuardian-Windows-x64.zip`, `NozzleGuardian-macOS.zip`, or `NozzleGuardian-Linux-x64.tar.gz`) or the latest **[Desktop Apps Build](https://github.com/umbette/nozzle-guardian/actions/workflows/build-desktop.yml)**.
 2. Double-click `NozzleGuardian` — zero Python or terminal needed! It sits in your system tray, opens the local web cockpit, works for both **Wi-Fi IPP** and **USB-only printers (`Canon G2770` etc.)**, and includes a **1-click "Avvia con il PC"** toggle.
 
-### Option 2: Home Assistant Add-on (1-Click Repository Add)
+### Option 2: Native Android App (1-Tap APK — Zero PC Needed for Wi-Fi Printers)
+1. Download **`NozzleGuardian-Android.apk`** from **[GitHub Releases](https://github.com/umbette/nozzle-guardian/releases/latest)** (Play Store `.aab` bundle also built in CI).
+2. Discovers Wi-Fi IPP printers via native `NsdManager`, reads SNMPv1 + Vendor EWS ink/page counters, scans nozzle sheets with your camera, fires surgical passes, and checks automatically in the background via `WorkManager` while connected to home Wi-Fi.
+
+### Option 3: Home Assistant Add-on (1-Click Repository Add)
 Click the badge below (or copy `https://github.com/umbette/nozzle-guardian` into **Settings ➔ Add-ons ➔ Repositories**):
 
 [![Add to Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fumbette%2Fnozzle-guardian)

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Nozzle Guardian</string>
+    <string name="notification_channel_name">Avvisi Stampante</string>
+    <string name="notification_channel_desc">Notifiche locali sugli spurghi preventivi e carta mancante</string>
+</resources>
