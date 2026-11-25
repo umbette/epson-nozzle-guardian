@@ -1,0 +1,20 @@
+{
+  "title": "Nozzle Guardian: Pure-Python Driverless Printhead Preservation & Predictive Drying Architecture",
+  "description": "Defensive prior art disclosure and software suite implementing channel-decoupled Mono/Color dormancy tracking, pure-Python RFC 8011 IPP + PWG-Raster + SNMPv1 telemetry, Laser/Thermal safety interlocks, lighting-adaptive EXIF nozzle scanner, and Antoine VPD hardware dongle firmware.",
+  "upload_type": "software",
+  "license": "agpl-3.0-only",
+  "creators": [
+    {
+      "name": "Umberto (umbette)"
+    }
+  ],
+  "keywords": [
+    "Nozzle Guardian",
+    "Driverless IPP",
+    "PWG-Raster",
+    "EcoTank",
+    "Printhead Anti-Clog",
+    "Prior Art",
+    "Defensive Publication"
+  ]
+}

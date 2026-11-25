@@ -15,6 +15,7 @@ class PrinterConfig(BaseModel):
     inactivity_threshold_days: int = 5
     use_tls: bool = True
     auto_purge_enabled: bool = False
+    media_size: str = "auto"
 
 
 class PatternConfig(BaseModel):
@@ -25,15 +26,26 @@ class PatternConfig(BaseModel):
     margin_side_mm: float = 15.0
 
 
+class NotificationsConfig(BaseModel):
+    ntfy_url: str = ""
+    webhook_url: str = ""
+    ha_url: str = ""
+    ha_token: str = ""
+    ha_notify_service: str = "notify"
+    dashboard_url: str = ""
+
+
 class Settings(BaseSettings):
     printer: PrinterConfig = Field(default_factory=PrinterConfig)
     pattern: PatternConfig = Field(default_factory=PatternConfig)
+    notifications: NotificationsConfig = Field(default_factory=NotificationsConfig)
     api_key: Optional[str] = None
     allow_unauthenticated: bool = False
 
     @classmethod
     def load(cls, config_path: str = "config.yaml", data_dir: str = "/app/data") -> "Settings":
         data: dict[str, Any] = {}
+        data_dir = os.getenv("DATA_DIR") or data_dir
         path = Path(config_path)
         if path.exists():
             with open(path, "r", encoding="utf-8") as f:
@@ -41,8 +53,33 @@ class Settings(BaseSettings):
                 if isinstance(loaded, dict):
                     data = loaded
 
-        # Override printer via env (supporting both PRINTER_* and legacy EPSON_*)
+        # Home Assistant Add-on options (/data/options.json)
+        options_path = os.getenv("OPTIONS_PATH", "/data/options.json")
+        ha_options: dict[str, Any] = {}
+        if os.path.exists(options_path):
+            try:
+                import json
+                with open(options_path, "r", encoding="utf-8") as f:
+                    parsed_opt = json.load(f)
+                    if isinstance(parsed_opt, dict):
+                        ha_options = parsed_opt
+            except Exception:
+                pass
+
+        # Override printer via HA Add-on options and env (supporting both PRINTER_* and legacy EPSON_*)
         printer_data = data.get("printer", {})
+        if "printer_host" in ha_options and ha_options["printer_host"] is not None:
+            printer_data["host"] = str(ha_options["printer_host"])
+        if "printer_port" in ha_options and ha_options["printer_port"] is not None:
+            printer_data["port"] = int(ha_options["printer_port"])
+        if "printer_use_tls" in ha_options:
+            printer_data["use_tls"] = bool(ha_options["printer_use_tls"])
+        if "inactivity_threshold_days" in ha_options:
+            printer_data["inactivity_threshold_days"] = int(ha_options["inactivity_threshold_days"])
+        if "auto_purge_enabled" in ha_options:
+            printer_data["auto_purge_enabled"] = bool(ha_options["auto_purge_enabled"])
+        if "media_size" in ha_options and ha_options["media_size"]:
+            printer_data["media_size"] = str(ha_options["media_size"])
         
         host_env = os.getenv("PRINTER_HOST") or os.getenv("EPSON_HOST")
         if host_env:
@@ -62,8 +99,38 @@ class Settings(BaseSettings):
         auto_purge_env = os.getenv("AUTO_PURGE_ENABLED")
         if auto_purge_env is not None:
             printer_data["auto_purge_enabled"] = str(auto_purge_env).lower() in ("true", "1", "yes")
-            
+
+        media_env = os.getenv("PRINTER_MEDIA")
+        if media_env:
+            printer_data["media_size"] = media_env
+
         data["printer"] = printer_data
+
+        notif_data = data.get("notifications", {})
+        if "ntfy_url" in ha_options and ha_options["ntfy_url"]:
+            notif_data["ntfy_url"] = str(ha_options["ntfy_url"])
+        if "webhook_url" in ha_options and ha_options["webhook_url"]:
+            notif_data["webhook_url"] = str(ha_options["webhook_url"])
+        if "notify_service" in ha_options and ha_options["notify_service"]:
+            notif_data["ha_notify_service"] = str(ha_options["notify_service"]).replace("notify.", "")
+
+        supervisor_token = os.getenv("SUPERVISOR_TOKEN")
+        if supervisor_token:
+            notif_data["ha_token"] = supervisor_token
+            notif_data["ha_url"] = "http://supervisor/core"
+        if os.getenv("NTFY_URL"):
+            notif_data["ntfy_url"] = os.getenv("NTFY_URL", "").strip()
+        if os.getenv("WEBHOOK_URL"):
+            notif_data["webhook_url"] = os.getenv("WEBHOOK_URL", "").strip()
+        if os.getenv("HASS_URL"):
+            notif_data["ha_url"] = os.getenv("HASS_URL", "").strip()
+        if os.getenv("HASS_TOKEN"):
+            notif_data["ha_token"] = os.getenv("HASS_TOKEN", "").strip()
+        if os.getenv("HASS_NOTIFY_SERVICE"):
+            notif_data["ha_notify_service"] = os.getenv("HASS_NOTIFY_SERVICE", "").replace("notify.", "").strip()
+        if os.getenv("DASHBOARD_PUBLIC_URL"):
+            notif_data["dashboard_url"] = os.getenv("DASHBOARD_PUBLIC_URL", "").strip()
+        data["notifications"] = notif_data
 
         allow_unauth = os.getenv("ALLOW_UNAUTHENTICATED", "").lower() in ("true", "1", "yes")
         data["allow_unauthenticated"] = allow_unauth

@@ -1,7 +1,5 @@
-import io
 from unittest.mock import AsyncMock, patch
 from PIL import Image
-import pytest
 
 from src.printer import PrinterStatus, PurgeJobResult, PurgeJobStatus
 from src.cli import main
@@ -15,19 +13,27 @@ def test_cli_systemd_output(capsys):
     assert "OnCalendar=" in captured
 
 def test_cli_scan_command(tmp_path, capsys):
-    # Create test image
-    img = Image.new("RGB", (200, 200), color=(255, 255, 255))
-    test_file = tmp_path / "test_sheet.png"
-    img.save(test_file)
+    # 1. Blank image must be safely rejected (not misdiagnosed as 100% clogged)
+    blank_img = Image.new("RGB", (200, 200), color=(255, 255, 255))
+    blank_file = tmp_path / "blank_sheet.png"
+    blank_img.save(blank_file)
 
-    with patch("sys.argv", ["nozzle-guardian", "scan", str(test_file)]):
+    with patch("sys.argv", ["nozzle-guardian", "scan", str(blank_file)]):
         main()
     captured = capsys.readouterr().out
     assert "NOZZLE HEALTH REPORT" in captured
     assert "Overall Printhead Health: 0.0%" in captured
 
-    # Test with --json flag
-    with patch("sys.argv", ["nozzle-guardian", "scan", str(test_file), "--json"]):
+    with patch("sys.argv", ["nozzle-guardian", "scan", str(blank_file), "--json"]):
+        main()
+    captured_blank_json = capsys.readouterr().out
+    assert '"success": false' in captured_blank_json.lower()
+
+    # 2. Valid Nozzle Guardian sheet must succeed with high health score
+    from src.config import Settings
+    from src.generator import PatternGenerator
+    sheet_path = PatternGenerator(Settings(), assets_dir=tmp_path).generate_cmyk_pattern_png()
+    with patch("sys.argv", ["nozzle-guardian", "scan", str(sheet_path), "--json"]):
         main()
     captured_json = capsys.readouterr().out
     assert '"success": true' in captured_json.lower()

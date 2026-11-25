@@ -1,18 +1,20 @@
-version: "3.8"
-
 services:
   nozzle-guardian:
     build: .
     container_name: nozzle-guardian
     restart: unless-stopped
-    ports:
-      - "8086:8085"
+    network_mode: host
     environment:
       - PRINTER_HOST=${PRINTER_HOST:-${EPSON_HOST:-192.168.1.181}}
       - PRINTER_PORT=${PRINTER_PORT:-${EPSON_PORT:-631}}
       - PRINTER_USE_TLS=${PRINTER_USE_TLS:-${EPSON_USE_TLS:-true}}
+      - PRINTER_MEDIA=${PRINTER_MEDIA:-auto}
       - INACTIVITY_DAYS=${INACTIVITY_DAYS:-5}
       - AUTO_PURGE_ENABLED=${AUTO_PURGE_ENABLED:-false}
+      - NTFY_URL=${NTFY_URL:-}
+      - WEBHOOK_URL=${WEBHOOK_URL:-}
+      - HASS_URL=${HASS_URL:-}
+      - HASS_TOKEN=${HASS_TOKEN:-}
       - API_KEY=${API_KEY:-}
       - ALLOW_UNAUTHENTICATED=${ALLOW_UNAUTHENTICATED:-false}
     volumes:

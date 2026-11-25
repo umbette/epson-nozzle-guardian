@@ -1,0 +1,38 @@
+name: "Nozzle Guardian"
+slug: "nozzle_guardian"
+version: "1.2.0"
+description: "Driverless zero-CUPS inkjet printhead maintenance daemon, mobile nozzle scanner & surgical purge cockpit for EcoTank, MegaTank, Smart Tank, and Brother."
+url: "https://github.com/umbette/nozzle-guardian"
+arch:
+  - aarch64
+  - amd64
+  - armv7
+startup: services
+boot: auto
+host_network: true
+homeassistant_api: true
+init: false
+ingress: true
+ingress_port: 8086
+panel_icon: "mdi:printer-check"
+panel_title: "Nozzle Guardian"
+options:
+  printer_host: ""
+  printer_port: 631
+  printer_use_tls: true
+  inactivity_threshold_days: 5
+  auto_purge_enabled: false
+  media_size: "auto"
+  ntfy_url: ""
+  webhook_url: ""
+  notify_service: "notify.notify"
+schema:
+  printer_host: str?
+  printer_port: int
+  printer_use_tls: bool
+  inactivity_threshold_days: int(1,30)
+  auto_purge_enabled: bool
+  media_size: "list(auto|iso_a4_210x297mm|na_letter_8.5x11in)"
+  ntfy_url: str?
+  webhook_url: str?
+  notify_service: str?

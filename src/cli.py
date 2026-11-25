@@ -14,6 +14,7 @@ from pathlib import Path
 from .config import settings
 from .daemon import NozzleGuardianDaemon
 from .generator import PatternGenerator
+from .local_spooler import is_local_queue_target
 from .printer import EpsonPrinterClient
 from .scanner import analyze_nozzle_sheet
 
@@ -78,12 +79,15 @@ async def cmd_purge(args):
     gen = PatternGenerator(settings)
     
     print(f"🖨️ Preparing purge job for mode: {mode.upper()}...")
-    pwg_path = gen.get_pwg_path(mode)
-    if not pwg_path.exists():
-        print(f"Compiling PWG-Raster pattern for {mode}...")
-        pwg_path = await asyncio.to_thread(gen.compile_pwg, mode)
-        
-    res = await client.execute_purge_job(pwg_path, mode=mode)
+    if is_local_queue_target(client.host):
+        job_path = await asyncio.to_thread(gen.generate_png, mode)
+    else:
+        job_path = gen.get_pwg_path(mode)
+        if not job_path.exists():
+            print(f"Compiling PWG-Raster pattern for {mode}...")
+            job_path = await asyncio.to_thread(gen.compile_pwg, mode)
+
+    res = await client.execute_purge_job(job_path, mode=mode)
     if res.status.value == "accepted":
         print(f"✅ Purge job '{mode.upper()}' successfully dispatched to printer!")
     else:
@@ -105,9 +109,12 @@ async def cmd_surgical(args):
     gen = PatternGenerator(settings)
     
     print(f"🎯 Compiling surgical resuscitation pass: {channel.upper()} Nozzle #{step} ({bursts} micro-bursts)...")
-    pwg_path = await asyncio.to_thread(gen.compile_surgical_pwg, channel, step, bursts)
-    
-    res = await client.execute_purge_job(pwg_path, mode=f"surgical_{channel}_s{step}")
+    if is_local_queue_target(client.host):
+        job_path, _ = await asyncio.to_thread(gen.generate_surgical_purge_png, channel, step, bursts, "thermal")
+    else:
+        job_path = await asyncio.to_thread(gen.compile_surgical_pwg, channel, step, bursts)
+
+    res = await client.execute_purge_job(job_path, mode=f"surgical_{channel}_s{step}")
     if res.status.value == "accepted":
         print(f"✅ Surgical acoustic resuscitation pass dispatched for {channel.upper()} #{step}!")
     else:
@@ -132,7 +139,7 @@ def cmd_scan(args):
         print(json.dumps(res, indent=2))
         return
 
-    print(f"\n================ NOZZLE HEALTH REPORT ================")
+    print("\n================ NOZZLE HEALTH REPORT ================")
     print(f"Overall Printhead Health: {res['overall_health_pct']}%")
     print("------------------------------------------------------")
     for ch, data in res.get("channels", {}).items():
@@ -194,6 +201,31 @@ WantedBy=timers.target
     print("  sudo systemctl enable --now nozzle-guardian.timer")
 
 
+def cmd_desktop(args):
+    """Launches the local Desktop Companion (Web Cockpit + optional tray + wake catch-up)."""
+    from .desktop import run_desktop
+    run_desktop(
+        host=args.host,
+        port=args.port,
+        open_browser=args.open_ui,
+        enable_tray=not args.no_tray,
+    )
+
+
+def cmd_install_desktop(args):
+    """Generates (and optionally installs) Windows/macOS/Linux logon & wake autostart files."""
+    from .desktop import generate_autostart_artifacts
+    out = Path(args.output_dir) if args.output_dir else None
+    res = generate_autostart_artifacts(output_dir=out, install_local=not args.export_only)
+    print(f"Platform: {res['platform']}")
+    if res["installed_path"]:
+        print(f"✅ Autostart unit installed at: {res['installed_path']}")
+    elif out:
+        print(f"✅ Desktop autostart templates exported into: {out}")
+    else:
+        print("ℹ️ On Windows, export XML with `--output-dir ./packaging` and import in Task Scheduler.")
+
+
 def main():
     parser = argparse.ArgumentParser(
         prog="nozzle-guardian",
@@ -225,6 +257,17 @@ def main():
     # systemd command
     subparsers.add_parser("systemd", help="Generate systemd .service and .timer units for headless Linux setups")
 
+    # desktop & install-desktop commands
+    p_desk = subparsers.add_parser("desktop", help="Run Desktop Companion agent (web cockpit + tray + wake catch-up)")
+    p_desk.add_argument("--host", default="127.0.0.1", help="Bind host (use 0.0.0.0 for LAN/smartphone access)")
+    p_desk.add_argument("--port", type=int, default=8086, help="Web UI & API port")
+    p_desk.add_argument("--open-ui", action="store_true", help="Open web UI in default browser on startup")
+    p_desk.add_argument("--no-tray", action="store_true", help="Run headless without system tray icon")
+
+    p_inst = subparsers.add_parser("install-desktop", help="Install/export Windows, macOS, or Linux desktop autostart")
+    p_inst.add_argument("--output-dir", default="", help="Optional directory to export XML/plist/service templates")
+    p_inst.add_argument("--export-only", action="store_true", help="Export templates without modifying local OS user folders")
+
     args = parser.parse_args()
     _setup_logging(args.verbose)
 
@@ -238,6 +281,10 @@ def main():
         cmd_scan(args)
     elif args.command == "systemd":
         cmd_systemd(args)
+    elif args.command == "desktop":
+        cmd_desktop(args)
+    elif args.command == "install-desktop":
+        cmd_install_desktop(args)
 
 
 if __name__ == "__main__":

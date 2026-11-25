@@ -1,0 +1,65 @@
+# ==============================================================================
+# Home Assistant Package: Universal Nozzle Guardian (v1.2+)
+# Supports Epson EcoTank, Canon MegaTank, HP Smart Tank & Brother Inkvestment
+# Place in: /config/packages/nozzle_guardian_package.yaml
+# Set your secret in /config/secrets.yaml:
+#   nozzle_guardian_api_key: "your_key_from_data_api_key_secret"
+# ==============================================================================
+
+rest_command:
+  nozzle_guardian_check:
+    url: "http://127.0.0.1:8086/check"
+    method: "POST"
+    headers:
+      X-API-Key: !secret nozzle_guardian_api_key
+      Content-Type: "application/json"
+
+  nozzle_guardian_purge_cmy:
+    url: "http://127.0.0.1:8086/purge/cmy"
+    method: "POST"
+    headers:
+      X-API-Key: !secret nozzle_guardian_api_key
+      Content-Type: "application/json"
+
+  nozzle_guardian_purge_k:
+    url: "http://127.0.0.1:8086/purge/k"
+    method: "POST"
+    headers:
+      X-API-Key: !secret nozzle_guardian_api_key
+      Content-Type: "application/json"
+
+  nozzle_guardian_purge_cmyk:
+    url: "http://127.0.0.1:8086/purge/cmyk"
+    method: "POST"
+    headers:
+      X-API-Key: !secret nozzle_guardian_api_key
+      Content-Type: "application/json"
+
+sensor:
+  - platform: rest
+    name: "Nozzle Guardian Status"
+    resource: "http://127.0.0.1:8086/status"
+    headers:
+      X-API-Key: !secret nozzle_guardian_api_key
+    scan_interval: 300
+    timeout: 8
+    json_attributes:
+      - online
+      - make_and_model
+      - printer_kind
+      - head_technology
+      - monochrome_pages
+      - color_pages
+      - total_pages
+      - media_default
+      - state
+    value_template: "{{ value_json.state if value_json.online else 'offline' }}"
+
+automation:
+  - id: nozzle_guardian_daily_check
+    alias: "Nozzle Guardian - Controllo Giornaliero Automatico"
+    trigger:
+      - platform: time
+        at: "12:15:00"
+    action:
+      - service: rest_command.nozzle_guardian_check

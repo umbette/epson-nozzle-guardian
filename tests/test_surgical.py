@@ -1,7 +1,6 @@
 import io
 from unittest.mock import AsyncMock, patch
 from PIL import Image
-import pytest
 from starlette.testclient import TestClient
 
 from src.config import Settings
@@ -14,21 +13,27 @@ def test_surgical_purge_png_generation(tmp_path):
     cfg = Settings()
     gen = PurgePatternGenerator(cfg, assets_dir=tmp_path)
     
-    # Black channel (Grayscale)
+    # Black channel (Grayscale) at default 300 DPI A4
     k_path, k_model = gen.generate_surgical_purge_png("black", step=3, bursts=5)
     assert k_path.exists()
     assert k_model == "Gray"
     with Image.open(k_path) as img:
-        assert img.size == (2976, 4209)
+        assert img.size == (2480, 3507)
         assert img.mode == "L"
         
-    # Color channel (RGB)
-    c_path, c_model = gen.generate_surgical_purge_png("cyan", step=1, bursts=2)
+    # Color channel (RGB) at 360 DPI A4 (Epson config.yaml profile)
+    gen_360 = PurgePatternGenerator(cfg, assets_dir=tmp_path, dpi=360)
+    c_path, c_model = gen_360.generate_surgical_purge_png("cyan", step=1, bursts=2)
     assert c_path.exists()
     assert c_model == "RGB"
     with Image.open(c_path) as img:
         assert img.size == (2976, 4209)
         assert img.mode == "RGB"
+
+    # Thermal BubbleJet protection clamps bursts <= 3
+    payload, eff = gen.compile_surgical_payload("cyan", step=2, bursts=8, head_technology="thermal")
+    assert len(payload) > 0
+    assert eff <= 3
 
 def test_scanner_with_generated_sheet(tmp_path):
     cfg = Settings()
@@ -53,15 +58,15 @@ def test_scanner_with_generated_sheet(tmp_path):
     assert result["overall_health_pct"] > 50.0
 
 def test_scanner_with_empty_image():
-    # Solid white image has no rungs -> 0% health
+    # Solid white image is NOT a Nozzle Guardian sheet -> safely rejected without wasting ink
     img = Image.new("RGB", (200, 200), color=(255, 255, 255))
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     
     result = analyze_nozzle_sheet(buf.getvalue())
-    assert result["success"] is True
+    assert result["success"] is False
     assert result["overall_health_pct"] == 0.0
-    assert result["recommended_action"] == "full_purge"
+    assert result["recommended_action"] == "none"
 
 def test_web_ui_endpoint():
     client = TestClient(app)
@@ -112,22 +117,22 @@ def test_surgical_purge_endpoint(tmp_path):
         assert "surgical_cyan_4" in data["mode"]
         assert mock_exec.called
 
-def test_scan_nozzle_health_endpoint():
+def test_scan_nozzle_health_endpoint(tmp_path):
     client = TestClient(app)
     headers = {"x-api-key": settings.api_key} if settings.api_key else {}
 
-    img = Image.new("RGB", (300, 300), color=(255, 255, 255))
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    buf.seek(0)
+    gen = PurgePatternGenerator(Settings(), assets_dir=tmp_path)
+    sheet_path = gen.generate_cmyk_pattern_png()
     
     response = client.post(
         "/scan/nozzle-health",
-        files={"file": ("test_scan.png", buf.getvalue(), "image/png")},
+        files={"file": ("test_scan.png", sheet_path.read_bytes(), "image/png")},
         headers=headers
     )
     assert response.status_code == 200
     data = response.json()
     assert data["success"] is True
     assert "overall_health_pct" in data
+    assert data["overall_health_pct"] > 50.0
     assert "channels" in data
+    assert "black" in data["channels"]

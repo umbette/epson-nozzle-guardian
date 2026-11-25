@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "If you reference Nozzle Guardian, its pure-Python IPP/PWG engine, optical scanner, or Predictive Drying Dongle architecture, please cite it using this metadata."
+title: "Nozzle Guardian: Pure-Python Driverless Anti-Clogging Engine & Autonomous Predictive Drying Architecture"
+authors:
+  - family-names: "Umberto"
+    alias: "umbette"
+version: "1.2.0"
+date-released: "2026-11-25"
+url: "https://github.com/umbette/nozzle-guardian"
+license: "AGPL-3.0-only"
+keywords:
+  - inkjet
+  - ipp
+  - pwg-raster
+  - snmp
+  - printhead-maintenance
+  - prior-art
+  - defensive-publication

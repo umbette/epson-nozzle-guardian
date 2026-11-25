@@ -1,36 +1,45 @@
+"""
+Universal Multi-Vendor Printer Client (Pure-Python IPP + Web EWS + SNMPv1)
+===========================================================================
+Supports Epson EcoTank, Canon MegaTank/PIXMA/MAXIFY, HP Smart Tank/OfficeJet,
+Brother Inkvestment, and any IPP Everywhere / AirPrint / ipp-usb printer without CUPS.
+"""
+
 import asyncio
-import os
 import logging
-import re
-import subprocess
-import warnings
-from dataclasses import dataclass
-from enum import Enum
 from pathlib import Path
-from typing import Optional
+import re
+from dataclasses import dataclass, field
+from enum import Enum
+from html.parser import HTMLParser
+from typing import Any, Dict, List, Optional, Tuple
 import httpx
-from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
 
 from .config import settings
+from .ipp import PRINTER_STATE_MAP, query_ipp_attributes, send_ipp_print_job
+from .local_spooler import is_local_queue_target, query_local_printer_status, send_local_print_job
+from .snmp import query_snmp_printer_telemetry
 
-logger = logging.getLogger("epson_guardian.printer")
+logger = logging.getLogger("nozzle_guardian.printer")
 
-IPP_PRINT_JOB_TEST = """{
-  OPERATION Print-Job
-  GROUP operation-attributes-tag
-  ATTR charset attributes-charset utf-8
-  ATTR language attributes-natural-language en
-  ATTR uri printer-uri $uri
-  ATTR name requesting-user-name "epson-guardian"
-  ATTR name job-name "Nozzle Guardian Purge"
-  ATTR mimeMediaType document-format $document-format
-  GROUP job-attributes-tag
-  ATTR keyword media iso_a4_210x297mm
-  ATTR keyword print-color-mode $print-color-mode
-  ATTR keyword sides one-sided
-  FILE $filename
-}
-"""
+VENDOR_EWS_ENDPOINTS = [
+    "/PRESENTATION/HTML/TOP/PRTINFO.HTML",      # Epson EcoTank primary
+    "/PRESENTATION/ADVANCED/INFO_PRTINFO.HTML", # Epson EcoTank advanced
+    "/DevMgmt/ProductUsageDyn.xml",             # HP Smart Tank & OfficeJet (XML)
+    "/device/status.html",                      # Canon MegaTank modern EWS
+    "/English/pages_dev/status.html",           # Canon alternate EWS
+    "/etc/mnt_info.html",                       # Brother Inkvestment maintenance
+    "/general/information.html",                # Brother general status
+    "/status.html",                             # Generic
+    "/index.html",                              # Generic fallback
+]
+
+FORMAT_PREFERENCE = [
+    "image/pwg-raster",
+    "application/pdf",
+    "image/png",
+    "image/jpeg",
+]
 
 
 class PurgeJobStatus(str, Enum):
@@ -46,17 +55,6 @@ class PurgeJobResult:
     message: str
 
 
-VENDOR_ENDPOINTS = [
-    "/PRESENTATION/HTML/TOP/PRTINFO.HTML",      # Epson EcoTank primary
-    "/PRESENTATION/ADVANCED/INFO_PRTINFO.HTML", # Epson EcoTank advanced
-    "/DevMgmt/ProductUsageDyn.xml",             # HP Smart Tank & OfficeJet (XML)
-    "/device/status.html",                      # Canon MegaTank modern EWS
-    "/index.html",                              # Canon / Generic web status
-    "/etc/mnt_info.html",                       # Brother Inkvestment maintenance
-    "/status.html"                              # Brother / Generic
-]
-
-
 @dataclass
 class PrinterStatus:
     online: bool
@@ -64,131 +62,338 @@ class PrinterStatus:
     color_pages: Optional[int] = None
     total_pages: Optional[int] = None
     state: str = "unknown"
+    state_reasons: List[str] = field(default_factory=list)
     error_message: Optional[str] = None
     make_and_model: Optional[str] = None
-    head_technology: str = "piezo"  # 'piezo' (Acoustic resonance safe) or 'thermal' (BubbleJet)
+    printer_kind: str = "inkjet"  # "inkjet" or "laser"
+    head_technology: str = "piezo"  # "piezo", "thermal", or "laser"
+    media_default: str = "iso_a4_210x297mm"
+    supported_formats: List[str] = field(default_factory=list)
+    markers: List[Dict[str, Any]] = field(default_factory=list)
+    endpoint_path: str = "/ipp/print"
 
     @property
     def has_channel_telemetry(self) -> bool:
-        """Returns True if individual channel counters (mono and color) are both exposed."""
+        """Returns True if individual monochrome and color counters are both exposed."""
         return self.monochrome_pages is not None and self.color_pages is not None
 
+    @property
+    def is_media_empty(self) -> bool:
+        return any("media-empty" in str(r).lower() for r in self.state_reasons)
 
-class EpsonPrinterClient:
+
+class _TextExtractor(HTMLParser):
     def __init__(self):
-        self.host = settings.printer.host
-        self.port = settings.printer.port
-        self.timeout = settings.printer.timeout_sec
-        self.use_tls = settings.printer.use_tls
-        
-        # Use /app/data inside docker, or fallback to project local data/ directory
-        base_data = Path("/app/data") if Path("/app").is_dir() and os.access("/app", os.W_OK) else Path(__file__).resolve().parent.parent / "data"
-        base_data.mkdir(parents=True, exist_ok=True)
-        self.test_template_path = base_data / "print-job.test"
-        self._ensure_test_template()
+        super().__init__()
+        self.parts: List[str] = []
+        self._skip = False
+
+    def handle_starttag(self, tag, attrs):
+        if tag.lower() in ("script", "style"):
+            self._skip = True
+
+    def handle_endtag(self, tag):
+        if tag.lower() in ("script", "style"):
+            self._skip = False
+        if tag.lower() in ("tr", "div", "p", "li", "td", "th", "br"):
+            self.parts.append(" ")
+
+    def handle_data(self, data):
+        if not self._skip and data:
+            self.parts.append(data)
+
+    def get_text(self) -> str:
+        return " ".join(" ".join(self.parts).split())
+
+
+def _html_to_text(raw_content: str) -> str:
+    parser = _TextExtractor()
+    try:
+        parser.feed(raw_content)
+        parser.close()
+        return parser.get_text()
+    except Exception:
+        return re.sub(r"<[^>]+>", " ", raw_content)
+
+
+def _as_list(value: Any) -> List[Any]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    return [value]
+
+
+def _classify_printer_hardware(model_or_text: str, marker_types: List[str]) -> Tuple[str, str]:
+    """Determines (printer_kind, head_technology) from model string and RFC 3805 marker types."""
+    low = (model_or_text or "").lower()
+    mt_low = " ".join(str(m).lower() for m in marker_types)
+
+    if "toner" in mt_low or "fuser" in mt_low or any(k in low for k in ("laserjet", "color laser", "hl-l", "mfc-l", "ecosys", "phaser", "versalink")):
+        return "laser", "laser"
+
+    if any(k in low for k in ("canon", "megatank", "pixma", "maxify", "hp ", "smart tank", "deskjet", "officejet", "envy", "productusagedyn", "lexmark")):
+        return "inkjet", "thermal"
+
+    return "inkjet", "piezo"
+
+
+class UniversalPrinterClient:
+    """Pure-Python driverless IPP, Web EWS & SNMP printer client supporting all major vendors."""
+
+    def __init__(
+        self,
+        host: Optional[str] = None,
+        port: Optional[int] = None,
+        use_tls: Optional[bool] = None,
+        timeout_sec: Optional[float] = None,
+        preferred_media: Optional[str] = None,
+        snmp_port: int = 161,
+    ):
+        self.host = settings.printer.host if host is None else host
+        self.port = settings.printer.port if port is None else int(port)
+        self.use_tls = settings.printer.use_tls if use_tls is None else bool(use_tls)
+        self.timeout = settings.printer.timeout_sec if timeout_sec is None else float(timeout_sec)
+        self.preferred_media = getattr(settings.printer, "media_size", "auto") if preferred_media is None else preferred_media
+        self.snmp_port = snmp_port
         self._lock = asyncio.Lock()
+        self.last_status: Optional[PrinterStatus] = None
 
     @property
     def is_busy(self) -> bool:
-        """Returns True if a print job is currently being dispatched or executing."""
         return self._lock.locked()
 
-    async def execute_purge_job(self, file_path: Path, mode: str) -> PurgeJobResult:
-        """
-        Atomically executes a purge job, serializing dispatches across both background daemon
-        and HTTP API routes to prevent overlapping print jobs on the printer's IPP queue.
-        Returns a structured PurgeJobResult.
-        """
-        if self._lock.locked():
-            logger.warning("Purge job execution rejected: printer client lock is held by another active job.")
-            return PurgeJobResult(status=PurgeJobStatus.BUSY, message="Printer client is currently busy executing another job.")
-
-        async with self._lock:
-            success = await asyncio.to_thread(self.print_purge_file, file_path, mode=mode)
-            if success:
-                return PurgeJobResult(status=PurgeJobStatus.ACCEPTED, message=f"Print job for mode '{mode}' successfully dispatched to printer.")
-            return PurgeJobResult(status=PurgeJobStatus.ERROR, message=f"IPP print job execution failed for {file_path.name}.")
-
-    def _ensure_test_template(self) -> None:
-        self.test_template_path.parent.mkdir(parents=True, exist_ok=True)
-        self.test_template_path.write_text(IPP_PRINT_JOB_TEST, encoding="utf-8")
+    def configure(self, host: str, port: int = 631, use_tls: bool = True, preferred_media: str = "auto") -> None:
+        self.host = host.strip()
+        self.port = int(port)
+        self.use_tls = bool(use_tls)
+        self.preferred_media = preferred_media
 
     def get_ipp_uri(self) -> str:
         proto = "ipps" if self.use_tls else "ipp"
         return f"{proto}://{self.host}:{self.port}/ipp/print"
 
+    def negotiate_format(self, supported_formats: Optional[List[str]] = None) -> str:
+        """Selects the safest driverless document format supported by the target printer."""
+        supported = {str(f).lower().strip() for f in (supported_formats or [])}
+        if not supported:
+            return "image/pwg-raster"
+        for candidate in FORMAT_PREFERENCE:
+            if candidate in supported:
+                return candidate
+        return "image/png"
+
+    def negotiate_media(self, ipp_media_default: Optional[str] = None, ipp_media_supported: Optional[List[str]] = None) -> str:
+        if self.preferred_media and self.preferred_media != "auto":
+            return self.preferred_media
+        supported = [str(m) for m in (ipp_media_supported or [])]
+        if ipp_media_default in ("iso_a4_210x297mm", "na_letter_8.5x11in"):
+            return str(ipp_media_default)
+        if "iso_a4_210x297mm" in supported:
+            return "iso_a4_210x297mm"
+        if "na_letter_8.5x11in" in supported:
+            return "na_letter_8.5x11in"
+        return "iso_a4_210x297mm"
+
     async def get_status(self) -> PrinterStatus:
         """
-        Polls the printer's Web Config / EWS endpoints to parse page counters.
-        Probes standard candidate paths across Epson, HP, Canon, and Brother devices.
-        Follows redirects and disables SSL verification for self-signed certificates.
+        Queries IPP Get-Printer-Attributes, optional SNMPv1 MIB counters, and Vendor Web EWS
+        page counters cleanly without external binaries.
         """
-        schemes = ["https", "http"] if self.use_tls else ["http", "https"]
-        for endpoint in VENDOR_ENDPOINTS:
-            for scheme in schemes:
-                url = f"{scheme}://{self.host}{endpoint}"
-                try:
-                    async with httpx.AsyncClient(timeout=self.timeout, verify=False, follow_redirects=True) as client:
-                        resp = await client.get(url)
-                        if resp.status_code == 200:
-                            parsed = self._parse_web_info(resp.text)
-                            if parsed.monochrome_pages is not None or parsed.total_pages is not None or parsed.online:
-                                return parsed
-                except Exception as e:
-                    logger.debug(f"Query {url} failed: {e}")
+        if not self.host:
+            return PrinterStatus(online=False, state="unconfigured", error_message="No printer configured.")
 
-        # Fallback: check if IPP port is responsive asynchronously without blocking event loop
-        return await asyncio.to_thread(self._check_ipp_status)
+        if is_local_queue_target(self.host):
+            local_info = await query_local_printer_status(self.host)
+            if not local_info.get("online"):
+                status = PrinterStatus(
+                    online=False,
+                    state=local_info.get("state", "offline"),
+                    make_and_model=local_info.get("make_and_model"),
+                    error_message=local_info.get("error_message", "Local USB queue offline."),
+                )
+                self.last_status = status
+                return status
+
+            status = PrinterStatus(
+                online=True,
+                total_pages=local_info.get("total_pages"),
+                state=local_info.get("state", "idle"),
+                make_and_model=local_info.get("make_and_model"),
+                printer_kind=local_info.get("printer_kind", "inkjet"),
+                head_technology=local_info.get("head_technology", "thermal"),
+                media_default=local_info.get("media_default", "iso_a4_210x297mm"),
+                supported_formats=local_info.get("supported_formats", ["application/pdf", "image/png"]),
+                endpoint_path=self.host,
+            )
+            self.last_status = status
+            return status
+
+        ipp_res = await query_ipp_attributes(
+            self.host,
+            port=self.port,
+            use_tls=self.use_tls,
+            timeout_sec=min(4.0, self.timeout),
+        )
+
+        snmp_res = None
+        if ipp_res.success and self.port != 60000 and self.snmp_port > 0:
+            snmp_res = await query_snmp_printer_telemetry(
+                self.host,
+                port=self.snmp_port,
+                timeout_sec=min(1.5, self.timeout),
+            )
+
+        ews_status: Optional[PrinterStatus] = None
+        if self.port != 60000:
+            ews_status = await self._probe_ews_counters()
+
+        if not ipp_res.success and (ews_status is None or not ews_status.online):
+            err = ipp_res.error or (ews_status.error_message if ews_status else "Printer unreachable")
+            status = PrinterStatus(online=False, state="offline", error_message=err)
+            self.last_status = status
+            return status
+
+        attrs = ipp_res.attributes if ipp_res.success else {}
+        model = str(attrs.get("printer-make-and-model") or attrs.get("printer-name") or (ews_status.make_and_model if ews_status else "Inkjet Printer"))
+        marker_names = [str(x) for x in _as_list(attrs.get("marker-names"))]
+        marker_levels = _as_list(attrs.get("marker-levels"))
+        marker_types = [str(x) for x in _as_list(attrs.get("marker-types"))]
+        marker_colors = [str(x) for x in _as_list(attrs.get("marker-colors"))]
+
+        markers: List[Dict[str, Any]] = []
+        for idx, mname in enumerate(marker_names):
+            lvl = marker_levels[idx] if idx < len(marker_levels) else None
+            mtype = marker_types[idx] if idx < len(marker_types) else "unknown"
+            mcolor = marker_colors[idx] if idx < len(marker_colors) else ""
+            markers.append({"name": mname, "level": lvl, "type": mtype, "color": mcolor})
+
+        printer_kind, head_tech = _classify_printer_hardware(model, marker_types)
+        if ews_status and ews_status.head_technology in ("piezo", "thermal") and not ipp_res.success:
+            head_tech = ews_status.head_technology
+
+        state_code = attrs.get("printer-state")
+        ipp_state = PRINTER_STATE_MAP.get(state_code, ews_status.state if ews_status else "idle")
+        state_reasons = [str(r) for r in _as_list(attrs.get("printer-state-reasons")) if str(r) != "none"]
+
+        supported_formats = [str(f) for f in _as_list(attrs.get("document-format-supported"))]
+        media_supported = [str(m) for m in _as_list(attrs.get("media-supported"))]
+        media_default = self.negotiate_media(attrs.get("media-default"), media_supported)
+
+        mono_pages = ews_status.monochrome_pages if ews_status else None
+        color_pages = ews_status.color_pages if ews_status else None
+        total_pages = ews_status.total_pages if ews_status else None
+
+        ipp_total = attrs.get("printer-impressions-completed")
+        if total_pages is None and isinstance(ipp_total, int) and ipp_total >= 0:
+            total_pages = ipp_total
+
+        if (total_pages is None or not markers) and self.port != 60000 and self.snmp_port > 0:
+            if snmp_res is None:
+                snmp_res = await query_snmp_printer_telemetry(
+                    self.host,
+                    port=self.snmp_port,
+                    timeout_sec=min(1.5, self.timeout),
+                )
+            if total_pages is None and snmp_res.total_pages is not None:
+                total_pages = snmp_res.total_pages
+            if not markers and snmp_res.markers:
+                markers = snmp_res.markers
+
+        status = PrinterStatus(
+            online=True,
+            monochrome_pages=mono_pages,
+            color_pages=color_pages,
+            total_pages=total_pages,
+            state=ipp_state,
+            state_reasons=state_reasons,
+            make_and_model=model,
+            printer_kind=printer_kind,
+            head_technology=head_tech,
+            media_default=media_default,
+            supported_formats=supported_formats,
+            markers=markers,
+            endpoint_path=ipp_res.endpoint_path if ipp_res.success else "/ipp/print",
+        )
+        self.last_status = status
+        return status
+
+    async def _probe_ews_counters(self) -> Optional[PrinterStatus]:
+        schemes = ["https", "http"] if self.use_tls else ["http", "https"]
+        host_target = f"{self.host}:{self.port}" if self.port not in (80, 443, 631, 60000) else self.host
+        sem = asyncio.Semaphore(3)
+        timeout = min(2.0, self.timeout)
+
+        async with httpx.AsyncClient(timeout=timeout, verify=False, follow_redirects=True) as client:
+            for scheme in schemes:
+                async def _fetch_ews(endpoint: str) -> Optional[PrinterStatus]:
+                    url = f"{scheme}://{host_target}{endpoint}"
+                    async with sem:
+                        try:
+                            resp = await client.get(url)
+                            if resp.status_code == 200:
+                                parsed = self._parse_web_info(resp.text)
+                                if parsed.online:
+                                    return parsed
+                        except Exception:
+                            pass
+                    return None
+
+                results = await asyncio.gather(*(_fetch_ews(ep) for ep in VENDOR_EWS_ENDPOINTS), return_exceptions=True)
+                for res in results:
+                    if isinstance(res, PrinterStatus) and res.online:
+                        return res
+        return None
 
     def _parse_web_info(self, raw_content: str) -> PrinterStatus:
+        """Parses HP XML and Epson/Canon/Brother HTML EWS pages for decoupled Mono vs Color counters."""
         mono_pages = None
         color_pages = None
         total_pages = None
 
-        # 1. HP EWS XML Format (ProductUsageDyn.xml)
         if "ProductUsageDyn" in raw_content or "pudyn:" in raw_content:
             hp_mono = re.search(r"<(?:pudyn:)?MonochromeImpressions>(\d+)</(?:pudyn:)?MonochromeImpressions>", raw_content)
             hp_color = re.search(r"<(?:pudyn:)?ColorImpressions>(\d+)</(?:pudyn:)?ColorImpressions>", raw_content)
             hp_total = re.search(r"<(?:pudyn:)?TotalImpressions>(\d+)</(?:pudyn:)?TotalImpressions>", raw_content)
-            if hp_mono: mono_pages = int(hp_mono.group(1))
-            if hp_color: color_pages = int(hp_color.group(1))
-            if hp_total: total_pages = int(hp_total.group(1))
+            if hp_mono:
+                mono_pages = int(hp_mono.group(1))
+            if hp_color:
+                color_pages = int(hp_color.group(1))
+            if hp_total:
+                total_pages = int(hp_total.group(1))
 
-        # 2. HTML Text Extraction & Regex Parsing (Epson, Canon, Brother)
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
-            soup = BeautifulSoup(raw_content, "html.parser")
-        text = soup.get_text(separator=" ")
+        text = _html_to_text(raw_content)
 
         if mono_pages is None:
-            mono_match = re.search(
+            m = re.search(
                 r"(?:Monochrome|B/?W|Black\s*(?:&|and)\s*White|Pagine\s*(?:in\s*)?bianco\s*e\s*nero|Monocromatic[oe]|B\s*e\s*N)(?:\s*(?:Pages?|Impressions?))?\s*[:=]?\s*(\d+)",
-                text, re.I
+                text,
+                re.I,
             )
-            if mono_match:
-                mono_pages = int(mono_match.group(1))
+            if m:
+                mono_pages = int(m.group(1))
 
         if color_pages is None:
-            color_match = re.search(
+            m = re.search(
                 r"(?:Colou?r|Pagine\s*a\s*colori|Color[ei])(?:\s*(?:Pages?|Impressions?))?\s*[:=]?\s*(\d+)",
-                text, re.I
+                text,
+                re.I,
             )
-            if color_match:
-                color_pages = int(color_match.group(1))
+            if m:
+                color_pages = int(m.group(1))
 
         if total_pages is None:
-            total_match = re.search(
+            m = re.search(
                 r"(?:Total\s*(?:Number\s*of\s*)?Pages?(?:\s*Printed)?|Total\s*Impressions|Pagine\s*totali|Totale\s*pagine|Numero\s*totale\s*di\s*pagine|Page\s*Counter)\s*[:=]?\s*(\d+)",
-                text, re.I
+                text,
+                re.I,
             )
-            if total_match:
-                total_pages = int(total_match.group(1))
+            if m:
+                total_pages = int(m.group(1))
 
-        # Infer total if missing
         if total_pages is None and mono_pages is not None and color_pages is not None:
             total_pages = mono_pages + color_pages
 
-        # Validate that we actually found meaningful printer telemetry or printer identity
         has_telemetry = any(v is not None for v in (mono_pages, color_pages, total_pages))
         status_match = re.search(r"Printer\s*Status\s*[:=]?\s*(Available|Idle|Ready|Printing|Pronto|Disponibile)", text, re.I)
         is_known_printer = bool(re.search(r"(?:ET-\d+|EcoTank|MegaTank|Smart\s*Tank|PIXMA|ProductUsageDyn|Product\s*Status)", raw_content, re.I))
@@ -196,32 +401,24 @@ class EpsonPrinterClient:
         if not has_telemetry and not status_match and not is_known_printer:
             return PrinterStatus(
                 online=False,
-                monochrome_pages=None,
-                color_pages=None,
-                total_pages=None,
                 state="unknown",
-                error_message="Web endpoint responded with HTTP 200 but contained no recognizable printer telemetry"
+                error_message="Web endpoint responded without recognizable printer telemetry",
             )
 
-        # Identify Manufacturer & Printhead Technology
         content_lower = raw_content.lower()
         make_and_model = "Inkjet Printer"
-        head_technology = "piezo"
-
         if "epson" in content_lower or "ecotank" in content_lower or "et-" in content_lower:
             make_and_model = "Epson EcoTank Series"
-            head_technology = "piezo"
         elif "brother" in content_lower or "dcp-" in content_lower or "mfc-" in content_lower:
             make_and_model = "Brother Inkvestment Series"
-            head_technology = "piezo"
         elif "canon" in content_lower or "megatank" in content_lower or "pixma" in content_lower or "maxify" in content_lower:
             make_and_model = "Canon MegaTank Series"
-            head_technology = "thermal"
         elif "hp" in content_lower or "smart tank" in content_lower or "productusagedyn" in content_lower or "deskjet" in content_lower:
             make_and_model = "HP Smart Tank Series"
-            head_technology = "thermal"
 
+        kind, head_tech = _classify_printer_hardware(make_and_model + " " + content_lower[:300], [])
         state = "printing" if (status_match and "print" in status_match.group(1).lower()) else "idle"
+
         return PrinterStatus(
             online=True,
             monochrome_pages=mono_pages,
@@ -229,67 +426,70 @@ class EpsonPrinterClient:
             total_pages=total_pages,
             state=state,
             make_and_model=make_and_model,
-            head_technology=head_technology
+            printer_kind=kind,
+            head_technology=head_tech,
         )
 
-    def _check_ipp_status(self) -> PrinterStatus:
-        """Runs a minimal socket/ipptool probe with a strict 2-second timeout."""
-        uri = self.get_ipp_uri()
-        cmd = [
-            "ipptool", "-v", "-t",
-            uri,
-            "/usr/share/cups/ipptool/get-printer-attributes.test"
-        ]
-        try:
-            res = subprocess.run(cmd, capture_output=True, text=True, timeout=2.0)
-            if res.returncode == 0:
-                return PrinterStatus(online=True, state="idle")
-            return PrinterStatus(online=False, state="offline", error_message=res.stderr)
-        except FileNotFoundError:
-            # ipptool not installed locally (e.g. headless host): fallback to TCP port connectivity
-            try:
-                import socket
-                with socket.create_connection((self.host, self.port), timeout=2.0):
-                    return PrinterStatus(online=True, state="idle", error_message="ipptool not installed; verified online via TCP port")
-            except Exception as se:
-                return PrinterStatus(online=False, state="offline", error_message=f"ipptool not found and TCP connection failed: {se}")
-        except Exception as e:
-            return PrinterStatus(online=False, state="offline", error_message=str(e))
+    async def execute_purge_payload(
+        self,
+        payload: bytes,
+        doc_format: str,
+        mode: str,
+        media: str = "iso_a4_210x297mm",
+        endpoint_path: str = "/ipp/print",
+    ) -> PurgeJobResult:
+        """Atomically dispatches a compiled purge job over pure-Python IPP."""
+        if not self.host:
+            return PurgeJobResult(status=PurgeJobStatus.REJECTED, message="No printer configured.")
 
-    def print_purge_file(self, file_path: Path, mode: str) -> bool:
-        """
-        Dispatches a PWG-raster print file to the printer over IPP using ipptool.
-        Explicitly sets print-color-mode to 'monochrome' or 'color' to prevent
-        the printer from mixing color ink into black purges.
-        """
-        if not file_path.exists():
-            logger.error(f"Purge file does not exist: {file_path}")
-            return False
+        if self._lock.locked():
+            return PurgeJobResult(status=PurgeJobStatus.BUSY, message="Printer client is currently busy executing another job.")
 
-        mime_type = "image/pwg-raster" if file_path.suffix == ".pwg" else "image/png"
-        uri = self.get_ipp_uri()
         color_mode = "monochrome" if mode == "k" else "color"
+        async with self._lock:
+            if is_local_queue_target(self.host):
+                ok, msg = await send_local_print_job(
+                    host=self.host,
+                    payload=payload,
+                    doc_format=doc_format,
+                    color_mode=color_mode,
+                )
+                if ok:
+                    return PurgeJobResult(status=PurgeJobStatus.ACCEPTED, message=msg)
+                return PurgeJobResult(status=PurgeJobStatus.ERROR, message=msg)
 
-        cmd = [
-            "ipptool",
-            "-v",
-            "-t",
-            "-f", str(file_path),
-            "-d", f"document-format={mime_type}",
-            "-d", f"print-color-mode={color_mode}",
-            uri,
-            str(self.test_template_path)
-        ]
+            ok, msg = await send_ipp_print_job(
+                host=self.host,
+                port=self.port,
+                payload=payload,
+                doc_format=doc_format,
+                media=media,
+                color_mode=color_mode,
+                use_tls=self.use_tls,
+                endpoint_path=endpoint_path,
+            )
+            if ok:
+                return PurgeJobResult(status=PurgeJobStatus.ACCEPTED, message=msg)
+            return PurgeJobResult(status=PurgeJobStatus.ERROR, message=msg)
 
-        logger.info(f"Submitting {color_mode} print job to {uri}: {file_path.name} ({mime_type})")
-        try:
-            res = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-            if res.returncode == 0:
-                logger.info(f"Print job successfully accepted by printer: {res.stdout.splitlines()[-1] if res.stdout else 'OK'}")
-                return True
-            else:
-                logger.error(f"ipptool print job failed (code {res.returncode}): {res.stderr}")
-                return False
-        except Exception as e:
-            logger.error(f"Failed to execute ipptool: {e}")
-            return False
+    async def execute_purge_job(self, file_path: Path, mode: str) -> PurgeJobResult:
+        """Compatibility wrapper submitting a pre-compiled PWG/PNG/PDF file over pure-Python IPP."""
+        if self._lock.locked():
+            return PurgeJobResult(status=PurgeJobStatus.BUSY, message="Printer client is currently busy executing another job.")
+        if not file_path.exists():
+            return PurgeJobResult(status=PurgeJobStatus.ERROR, message=f"Purge file not found: {file_path}")
+
+        ext = file_path.suffix.lower()
+        doc_format = "image/pwg-raster" if ext == ".pwg" else ("application/pdf" if ext == ".pdf" else "image/png")
+        media = self.last_status.media_default if self.last_status else "iso_a4_210x297mm"
+        endpoint_path = self.last_status.endpoint_path if self.last_status else "/ipp/print"
+        return await self.execute_purge_payload(
+            payload=file_path.read_bytes(),
+            doc_format=doc_format,
+            mode=mode,
+            media=media,
+            endpoint_path=endpoint_path,
+        )
+
+
+EpsonPrinterClient = UniversalPrinterClient
