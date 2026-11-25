@@ -44,7 +44,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt pyinstaller pystray
 
-      - name: Build single-file standalone app
+      - name: Build standalone app
         run: |
           pyinstaller --noconfirm --clean packaging/nozzle_guardian.spec
 
@@ -77,8 +77,25 @@ jobs:
           name: ${{ matrix.artifact_name }}
           path: release_out/*
 
-      - name: Attach binaries to GitHub Release
-        if: github.event_name == 'release'
-        uses: softprops/action-gh-release@v2
+  attach_release:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download built desktop archives
+        uses: actions/download-artifact@v4
         with:
-          files: release_out/*
+          path: release_assets
+          merge-multiple: true
+
+      - name: Attach desktop binaries to latest GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG=$(gh release list -R "${{ github.repository }}" --limit 1 --json tagName -q '.[0].tagName')
+          if [ -n "$TAG" ]; then
+            echo "Attaching desktop archives to release $TAG..."
+            gh release upload "$TAG" release_assets/* --clobber -R "${{ github.repository }}"
+          else
+            echo "No release tag found yet; artifacts remain uploaded to workflow run."
+          fi
