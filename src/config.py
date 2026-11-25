@@ -1,7 +1,28 @@
 import os
 import secrets
+import sys
 from pathlib import Path
 from typing import Any, Optional
+
+
+def get_app_data_dir() -> str:
+    env_dir = os.getenv("DATA_DIR")
+    if env_dir:
+        return env_dir
+    if getattr(sys, "frozen", False):
+        if sys.platform == "win32":
+            base = Path(os.getenv("LOCALAPPDATA") or (Path.home() / "AppData" / "Local"))
+            return str(base / "NozzleGuardian" / "data")
+        if sys.platform == "darwin":
+            return str(Path.home() / "Library" / "Application Support" / "NozzleGuardian" / "data")
+        return str(Path.home() / ".local" / "share" / "nozzle-guardian" / "data")
+    return "/app/data"
+
+
+def get_app_assets_dir() -> str:
+    if getattr(sys, "frozen", False):
+        return str(Path(get_app_data_dir()).parent / "assets")
+    return "/app/assets"
 
 import yaml
 from pydantic import BaseModel, Field
@@ -43,9 +64,9 @@ class Settings(BaseSettings):
     allow_unauthenticated: bool = False
 
     @classmethod
-    def load(cls, config_path: str = "config.yaml", data_dir: str = "/app/data") -> "Settings":
+    def load(cls, config_path: str = "config.yaml", data_dir: Optional[str] = None) -> "Settings":
         data: dict[str, Any] = {}
-        data_dir = os.getenv("DATA_DIR") or data_dir
+        data_dir = data_dir or get_app_data_dir()
         path = Path(config_path)
         if path.exists():
             with open(path, "r", encoding="utf-8") as f:

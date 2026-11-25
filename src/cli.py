@@ -227,6 +227,14 @@ def cmd_install_desktop(args):
 
 
 def main():
+    # Double-clicking frozen executable (.exe / .app) without CLI args launches the 1-click Desktop App
+    if len(sys.argv) <= 1:
+        from .desktop import _configure_frozen_stdio, run_desktop
+        _configure_frozen_stdio()
+        _setup_logging(False)
+        run_desktop(host="127.0.0.1", port=8086, open_browser=True, enable_tray=True)
+        return
+
     parser = argparse.ArgumentParser(
         prog="nozzle-guardian",
         description="Nozzle Guardian: Channel-decoupled anti-clogging CLI and diagnostic tool"

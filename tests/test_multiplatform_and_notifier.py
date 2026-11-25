@@ -89,6 +89,31 @@ def test_desktop_autostart_generators(tmp_path):
     assert "Kernel-Power" in res["windows_task_xml"]
 
 
+def test_one_click_autostart_api_and_frozen_zero_arg_launch(monkeypatch):
+    client = TestClient(app)
+    headers = {"x-api-key": settings.api_key} if settings.api_key else {}
+
+    with patch("src.desktop.get_autostart_status", return_value={"platform": "Windows", "enabled": True, "target": "NozzleGuardian.exe"}):
+        r_get = client.get("/daemon/autostart", headers=headers)
+        assert r_get.status_code == 200
+        assert r_get.json()["enabled"] is True
+
+    with patch("src.desktop.set_autostart", return_value={"platform": "Windows", "enabled": False, "target": ""}) as mock_set:
+        r_post = client.post("/daemon/autostart", json={"enabled": False}, headers=headers)
+        assert r_post.status_code == 200
+        assert r_post.json()["enabled"] is False
+        mock_set.assert_called_once_with(False)
+
+    # Zero-arg launch (double-clicking .exe / .app) starts 1-click desktop UI cleanly
+    import sys
+    from src.cli import main as cli_main
+    with monkeypatch.context() as mp:
+        mp.setattr(sys, "argv", ["NozzleGuardian.exe"])
+        with patch("src.desktop.run_desktop") as mock_desktop:
+            cli_main()
+            mock_desktop.assert_called_once_with(host="127.0.0.1", port=8086, open_browser=True, enable_tray=True)
+
+
 def test_mobile_shortcuts_and_check_endpoint(tmp_path):
     client = TestClient(app)
     headers = {"x-api-key": settings.api_key} if settings.api_key else {}

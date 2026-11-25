@@ -1,9 +1,10 @@
 # Nozzle Guardian™
 
 [![CI Test Suite](https://github.com/umbette/nozzle-guardian/actions/workflows/ci.yml/badge.svg)](https://github.com/umbette/nozzle-guardian/actions/workflows/ci.yml)
+[![Desktop Apps](https://github.com/umbette/nozzle-guardian/actions/workflows/build-desktop.yml/badge.svg)](https://github.com/umbette/nozzle-guardian/actions/workflows/build-desktop.yml)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPLv3-blue.svg)](LICENSE)
 [![Hardware License: PolyForm NC](https://img.shields.io/badge/Dongle%20Firmware%20%26%20CAD-Noncommercial-orange.svg)](LICENSE-COMMERCIAL-HARDWARE)
-[![Home Assistant](https://img.shields.io/badge/Home%20Assistant-Add--on%20Ready-41BDF5?logo=home-assistant)](ha-addon/)
+[![Add to Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fumbette%2Fnozzle-guardian)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker)](Dockerfile)
 
 *Proactive, 100% pure-Python driverless anti-clogging and targeted channel-decoupled purge daemon for Epson EcoTank, Canon MegaTank/PIXMA, HP Smart Tank/OfficeJet, Brother Inkvestment, and IPP Everywhere Inkjet printers (zero CUPS required).*
@@ -68,6 +69,19 @@ Here is an actual printout generated on an **Epson EcoTank ET-2810** running Noz
 See [COMPATIBILITY.md](COMPATIBILITY.md) for tested models.
 * ✅ **Epson EcoTank ET-2810, ET-2814, ET-2820, ET-2850, ET-4800, L3150 series**
 * ✅ **Canon MegaTank, HP Smart Tank & Brother Inkjet series** (IPP Everywhere / PWG-Raster standard)
+
+---
+
+## ⚡ 1-Click Quick Start (No Python Required!)
+
+### Option 1: Standalone Desktop App (Windows `.exe`, macOS `.app`, Linux)
+1. Download the pre-built archive from **[GitHub Releases](https://github.com/umbette/nozzle-guardian/releases/latest)** (`NozzleGuardian-Windows-x64.zip`, `NozzleGuardian-macOS.zip`, or `NozzleGuardian-Linux-x64.tar.gz`) or the latest **[Desktop Apps Build](https://github.com/umbette/nozzle-guardian/actions/workflows/build-desktop.yml)**.
+2. Double-click `NozzleGuardian` — zero Python or terminal needed! It sits in your system tray, opens the local web cockpit, works for both **Wi-Fi IPP** and **USB-only printers (`Canon G2770` etc.)**, and includes a **1-click "Avvia con il PC"** toggle.
+
+### Option 2: Home Assistant Add-on (1-Click Repository Add)
+Click the badge below (or copy `https://github.com/umbette/nozzle-guardian` into **Settings ➔ Add-ons ➔ Repositories**):
+
+[![Add to Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fumbette%2Fnozzle-guardian)
 
 ---
 

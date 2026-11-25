@@ -1,0 +1,84 @@
+name: Build 1-Click Desktop Apps
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'packaging/**'
+      - 'requirements.txt'
+      - '.github/workflows/build-desktop.yml'
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact_name: NozzleGuardian-Windows-x64
+          - os: macos-latest
+            artifact_name: NozzleGuardian-macOS
+          - os: ubuntu-latest
+            artifact_name: NozzleGuardian-Linux-x64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install runtime and bundler dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller pystray
+
+      - name: Build single-file standalone app
+        run: |
+          pyinstaller --noconfirm --clean packaging/nozzle_guardian.spec
+
+      - name: Smoke-test standalone executable CLI
+        shell: bash
+        run: |
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            ./dist/NozzleGuardian.exe --help
+          elif [ "${{ runner.os }}" = "macOS" ]; then
+            ./dist/NozzleGuardian.app/Contents/MacOS/NozzleGuardian --help
+          else
+            ./dist/NozzleGuardian --help
+          fi
+
+      - name: Package release archive
+        shell: bash
+        run: |
+          mkdir -p release_out
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            powershell -Command "Compress-Archive -Path dist/NozzleGuardian.exe -DestinationPath release_out/${{ matrix.artifact_name }}.zip"
+          elif [ "${{ runner.os }}" = "macOS" ]; then
+            ditto -c -k --sequesterRsrc --keepParent dist/NozzleGuardian.app release_out/${{ matrix.artifact_name }}.zip
+          else
+            tar -czf release_out/${{ matrix.artifact_name }}.tar.gz -C dist NozzleGuardian
+          fi
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: release_out/*
+
+      - name: Attach binaries to GitHub Release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release_out/*

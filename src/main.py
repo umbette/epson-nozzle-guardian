@@ -8,7 +8,7 @@ from fastapi import FastAPI, HTTPException, Header, Request, UploadFile, File
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
 
-from .config import settings
+from .config import get_app_assets_dir, get_app_data_dir, settings
 from .generator import PatternGenerator
 from .ipp import discover_printers
 from .notifier import Notifier
@@ -32,10 +32,10 @@ def _resolve_dir(target_path: str, fallback_path: str) -> str:
         fb.mkdir(parents=True, exist_ok=True)
         return str(fb)
 
-generator = PatternGenerator(assets_dir=_resolve_dir("/app/assets", "assets"))
+generator = PatternGenerator(assets_dir=_resolve_dir(get_app_assets_dir(), "assets"))
 printer_client = EpsonPrinterClient()
 notifier = Notifier(settings)
-daemon = NozzleGuardianDaemon(state_dir=_resolve_dir("/app/data", "data"), alert_callback=notifier.send_alert)
+daemon = NozzleGuardianDaemon(state_dir=_resolve_dir(get_app_data_dir(), "data"), alert_callback=notifier.send_alert)
 
 
 @asynccontextmanager
@@ -240,13 +240,27 @@ async def toggle_auto_purge(req: AutoPurgeToggleRequest, request: Request, x_api
     return {"status": "ok", "auto_purge_enabled": req.enabled}
 
 
+@app.get("/daemon/autostart")
+async def read_autostart_status(request: Request, x_api_key: Optional[str] = Header(None)):
+    _verify_api_key(x_api_key, request)
+    from .desktop import get_autostart_status
+    return get_autostart_status()
+
+
+@app.post("/daemon/autostart")
+async def update_autostart_status(req: AutoPurgeToggleRequest, request: Request, x_api_key: Optional[str] = Header(None)):
+    _verify_api_key(x_api_key, request)
+    from .desktop import set_autostart
+    return set_autostart(req.enabled)
+
+
 @app.post("/purge/surgical", response_model=PurgeResponse)
-async def trigger_surgical_purge(req: SurgicalPurgeRequest, x_api_key: Optional[str] = Header(None)):
+async def trigger_surgical_purge(req: SurgicalPurgeRequest, request: Request, x_api_key: Optional[str] = Header(None)):
     """
     Triggers a surgical single-nozzle resuscitation pass.
     Fires micro-burst acoustic pressure pulses exclusively at the specified nozzle step coordinate.
     """
-    _verify_api_key(x_api_key)
+    _verify_api_key(x_api_key, request)
 
     if printer_client.is_busy:
         raise HTTPException(status_code=409, detail="A purge print job is already in progress.")
@@ -303,8 +317,8 @@ async def trigger_surgical_purge(req: SurgicalPurgeRequest, x_api_key: Optional[
 
 
 @app.post("/purge/{mode}", response_model=PurgeResponse)
-async def trigger_purge(mode: str, x_api_key: Optional[str] = Header(None)):
-    _verify_api_key(x_api_key)
+async def trigger_purge(mode: str, request: Request, x_api_key: Optional[str] = Header(None)):
+    _verify_api_key(x_api_key, request)
 
     mode = mode.lower()
     if mode not in ("cmy", "k", "cmyk"):
@@ -361,6 +375,7 @@ async def trigger_purge(mode: str, x_api_key: Optional[str] = Header(None)):
 
 @app.post("/scan/nozzle-health")
 async def scan_nozzle_sheet(
+    request: Request,
     file: Optional[UploadFile] = File(None),
     x_api_key: Optional[str] = Header(None)
 ):
@@ -368,7 +383,7 @@ async def scan_nozzle_sheet(
     Parses an uploaded image or photo of the Nozzle Guardian test printout,
     detects missing steps via color continuity profiling, and returns actionable recommendations.
     """
-    _verify_api_key(x_api_key)
+    _verify_api_key(x_api_key, request)
 
     if not file:
         raise HTTPException(status_code=400, detail="No image file uploaded.")
@@ -507,6 +522,14 @@ HTML_DASHBOARD_TEMPLATE = """<!DOCTYPE html>
           <button style="background:#334155; padding:7px 12px; font-size:0.8rem;" onclick="savePrinterCfg()">Salva IP</button>
           <button style="background:#0284c7; padding:7px 12px; font-size:0.8rem;" onclick="runSmartCheck()">⏱️ Check Inattività</button>
         </div>
+        <div style="display:flex; gap:14px; margin-top:10px; flex-wrap:wrap; font-size:0.78rem; color:var(--text-muted);">
+          <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+            <input type="checkbox" id="chkAutoPurge" onchange="toggleAutoPurgeUi(this.checked)"> Auto-spurgo preventivo
+          </label>
+          <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+            <input type="checkbox" id="chkAutostart" onchange="toggleAutostartUi(this.checked)"> Avvia automaticamente col PC
+          </label>
+        </div>
       </div>
 
       <!-- AI Camera Scanner Card -->
@@ -604,12 +627,39 @@ HTML_DASHBOARD_TEMPLATE = """<!DOCTYPE html>
           const stData = await stRes.json();
           const hEl = document.getElementById('cfgHost');
           const pEl = document.getElementById('cfgPort');
+          const aEl = document.getElementById('chkAutoPurge');
           if (hEl && !hEl.value && stData.printer_host) hEl.value = stData.printer_host;
           if (pEl && stData.printer_port) pEl.value = stData.printer_port;
+          if (aEl) aEl.checked = Boolean(stData.auto_purge_enabled);
+        }
+        const asRes = await fetch('./daemon/autostart', { headers: authHeaders() });
+        if (asRes.ok) {
+          const asData = await asRes.json();
+          const sEl = document.getElementById('chkAutostart');
+          if (sEl) sEl.checked = Boolean(asData.enabled);
         }
       } catch (e) {
         document.getElementById('printerStatusBadge').innerText = '⚠️ Connessione Fallita';
       }
+    }
+
+    async function toggleAutoPurgeUi(enabled) {
+      const res = await fetch('./daemon/auto-purge', {
+        method: 'POST',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ enabled: Boolean(enabled) })
+      });
+      if (res.ok) showToast(enabled ? '✅ Auto-spurgo attivato!' : 'ℹ️ Auto-spurgo disattivato.');
+    }
+
+    async function toggleAutostartUi(enabled) {
+      const res = await fetch('./daemon/autostart', {
+        method: 'POST',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ enabled: Boolean(enabled) })
+      });
+      if (res.ok) showToast(enabled ? '🚀 Avvio automatico con il PC attivato!' : 'ℹ️ Avvio automatico disattivato.');
+      else showToast('⚠️ Avvio automatico non disponibile su questo ambiente.');
     }
 
     async function savePrinterCfg() {

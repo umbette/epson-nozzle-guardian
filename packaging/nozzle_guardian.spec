@@ -1,14 +1,28 @@
 # Nozzle Guardian — Cross-Platform PyInstaller Spec (Windows .exe / macOS .app / Linux)
 # Build locally with: pyinstaller packaging/nozzle_guardian.spec
 
+import sys
+from PyInstaller.utils.hooks import collect_submodules
+
 block_cipher = None
 
+hiddenimports = (
+    collect_submodules("src")
+    + collect_submodules("uvicorn")
+    + collect_submodules("pystray")
+    + [
+        "PIL._tkinter_finder",
+        "multipart",
+        "pydantic_settings",
+    ]
+)
+
 a = Analysis(
-    ['../src/cli.py'],
+    ['desktop_entry.py'],
     pathex=['..'],
     binaries=[],
     datas=[('../config.example.yaml', '.')],
-    hiddenimports=['uvicorn.logging', 'uvicorn.loops.auto', 'uvicorn.protocols.http.auto'],
+    hiddenimports=hiddenimports,
     hookspath=[],
     runtime_hooks=[],
     excludes=[],
@@ -29,6 +43,13 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    upx=False,
     console=False,
 )
+
+if sys.platform == "darwin":
+    app = BUNDLE(
+        exe,
+        name='NozzleGuardian.app',
+        bundle_identifier='com.umbette.nozzleguardian',
+    )

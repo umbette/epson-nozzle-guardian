@@ -44,17 +44,13 @@ docker compose up -d
 
 ---
 
-## 3. App / Companion per PC (Windows, macOS, Linux Desktop)
+## 3. App / Companion per PC con 1 Click (Windows `.exe`, macOS `.app`, Linux — Zero Python)
 
-Ideale per chi non vuole tenere acceso un server H24: il PC verifica automaticamente i contatori all'accensione e al risveglio dallo standby (**Wake-Catchup**):
-```bash
-# Avvia Tray/Dashboard locale con controllo immediato
-python -m src.cli desktop --open-ui
+Ideale per chi non vuole né server né terminali Python:
+1. Scarica da **GitHub Releases / Actions (`Build 1-Click Desktop Apps`)** il pacchetto per il tuo sistema (`NozzleGuardian-Windows-x64.zip`, `NozzleGuardian-macOS.zip` o `NozzleGuardian-Linux-x64.tar.gz`).
+2. Estrai e fai **doppio click** su `NozzleGuardian`: si avvia nell'area di notifica (System Tray), apre la console nel browser, controlla subito la stampante al risveglio (*Wake-Catchup*) e ti permette con **1 click** di attivare **"Avvia con il PC"**.
 
-# Genera / installa avvio automatico (systemd --user su Linux, LaunchAgent su macOS, Task XML su Windows)
-python -m src.cli install-desktop --output-dir ./packaging/autostart
-```
-*(Per compilare un eseguibile standalone Windows `.exe` / macOS: `pyinstaller packaging/nozzle_guardian.spec`)*
+*(Da sorgente per sviluppatori: `python -m src.cli desktop --open-ui` oppure compila in locale con `pyinstaller packaging/nozzle_guardian.spec`).*
 
 ---
 
