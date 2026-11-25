@@ -92,6 +92,7 @@ class PatternGenerator(
         colW: Int,
         colH: Int,
         argb: Int,
+        diagLabelArgb: Int? = null,
     ) {
         val numSteps = 10
         val pitch = colH / numSteps.toDouble()
@@ -100,13 +101,24 @@ class PatternGenerator(
         val stepLen = maxOf(8, mm(2.2))
         val stepDx = maxOf(6, mm(1.4))
         val ladderW = (numSteps - 1) * stepDx + stepLen
-        val blockGap = maxOf(8, mm(2.8))
+        val blockGap = maxOf(6, mm(2.4))
+        val diagPad = if (diagLabelArgb != null) mm(3.6) else 0
+        val lblScale = maxOf(1, mm(0.28))
+        val lblGap = maxOf(2, mm(0.8))
 
-        var currX = x0
+        var currX = x0 + diagPad
+        var blockIdx = 0
         while (currX + ladderW <= x0 + colW) {
             for (i in 0 until numSteps) {
                 val sy = (y0 + (i + 0.5) * pitch).toInt()
                 val sx = currX + i * stepDx
+                if (blockIdx == 0 && diagLabelArgb != null) {
+                    val label = (i + 1).toString()
+                    val tw = label.length * 6 * lblScale - lblScale
+                    val tx = maxOf(x0, sx - tw - lblGap)
+                    val ty = sy - (3 * lblScale)
+                    drawText(surface, tx, ty, label, lblScale, diagLabelArgb)
+                }
                 surface.drawLine(sx, sy, sx + stepLen, sy, argb, rungThick)
                 if (i < numSteps - 1) {
                     val nextSy = (y0 + (i + 1.5) * pitch).toInt()
@@ -114,6 +126,7 @@ class PatternGenerator(
                 }
             }
             currX += ladderW + blockGap
+            blockIdx++
         }
     }
 
@@ -126,7 +139,7 @@ class PatternGenerator(
         val colH = mm(18.0)
         val x0 = sideMarginPx
         val x1 = x0 + stripeWidthPx
-        val badgeW = mm(8.0)
+        val badgeW = mm(6.0)
         val hdrScale = maxOf(2, mm(0.42))
         val fidSz = maxOf(8, mm(2.8))
 
@@ -147,7 +160,7 @@ class PatternGenerator(
             drawFiducial(surface, x1 - fidSz, ladderY0 + colH - fidSz, black)
             drawRulerLabels(surface, x0 + mm(5.8), ladderY0, colH, black, alignRight = true)
             drawRulerLabels(surface, x1 - mm(5.8), ladderY0, colH, black, alignRight = false)
-            drawLadderPattern(surface, x0 + rulerW, ladderY0, stripeWidthPx - 2 * rulerW, colH, black)
+            drawLadderPattern(surface, x0 + rulerW, ladderY0, stripeWidthPx - 2 * rulerW, colH, black, diagLabelArgb = black)
             return surface
         }
 
@@ -173,21 +186,24 @@ class PatternGenerator(
         }
 
         val ladderY0 = computeLadderY(channels.size)
-        val rulerW = mm(7.5)
         drawFiducial(surface, x0, ladderY0, fidArgb)
         drawFiducial(surface, x1 - fidSz, ladderY0, fidArgb)
         drawFiducial(surface, x0, ladderY0 + colH - fidSz, fidArgb)
         drawFiducial(surface, x1 - fidSz, ladderY0 + colH - fidSz, fidArgb)
-        drawRulerLabels(surface, x0 + mm(5.8), ladderY0, colH, hdrArgb, alignRight = true)
 
-        val matrixX0 = x0 + rulerW
-        val matrixW = stripeWidthPx - rulerW - fidSz - mm(1.5)
-        val gapPx = mm(5.0)
+        val matrixX0 = x0 + badgeW
+        val matrixW = stripeWidthPx - badgeW - fidSz - mm(1.5)
+        val gapPx = mm(4.0)
         val colW = (matrixW - (channels.size - 1) * gapPx) / channels.size
 
         channels.forEachIndexed { idx, ch ->
             val colX = matrixX0 + idx * (colW + gapPx)
-            drawLadderPattern(surface, colX, ladderY0, colW, colH, ch.argb)
+            val diagArgb = if (ch == NozzleChannel.YELLOW) {
+                if (includeBlack) 0xFF373737.toInt() else 0xFFD26E00.toInt()
+            } else {
+                ch.argb
+            }
+            drawLadderPattern(surface, colX, ladderY0, colW, colH, ch.argb, diagLabelArgb = diagArgb)
         }
         return surface
     }

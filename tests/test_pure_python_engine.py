@@ -326,3 +326,23 @@ def test_scanner_exif_rotation_and_damaged_rung_surgical_target(tmp_path):
     assert report["recommended_action"] == "surgical_purge"
     assert report["target_channel"] == "magenta"
     assert report["target_step"] == 4
+
+
+def test_scanner_diagonal_layout_all_modes_and_warm_epson_lighting(tmp_path):
+    from src.scanner import _classify_pixel
+
+    gen = PatternGenerator(Settings(), assets_dir=tmp_path)
+    for mode in ("k", "cmy", "cmyk"):
+        sheet = gen.build_purge_image(mode)
+        buf = io.BytesIO()
+        sheet.save(buf, format="PNG")
+        rep = analyze_nozzle_sheet(buf.getvalue())
+        assert rep["success"] is True
+        assert rep["sheet_mode"] == mode
+        assert rep["overall_health_pct"] == 100.0
+
+    # Real indoor lighting Epson EcoTank photo ratios (paper ~(206, 187, 174))
+    assert _classify_pixel(108, 123, 128, 206.0, 187.0, 174.0) == "cyan"
+    assert _classify_pixel(157, 68, 88, 206.0, 187.0, 174.0) == "magenta"
+    assert _classify_pixel(205, 163, 19, 206.0, 187.0, 174.0) == "yellow"
+    assert _classify_pixel(77, 62, 57, 206.0, 187.0, 174.0) == "black"

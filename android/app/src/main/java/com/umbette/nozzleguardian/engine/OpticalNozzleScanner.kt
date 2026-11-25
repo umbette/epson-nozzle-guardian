@@ -51,10 +51,10 @@ object OpticalNozzleScanner {
         val chroma = maxC - minC
         val lumRatio = (nr + ng + nb) / 3.0
 
-        if ((minOf(ng, nb) - nr) > 0.16 && nr < 0.78 && minOf(ng, nb) > 0.52) return "cyan"
-        if ((minOf(nr, nb) - ng) > 0.16 && ng < 0.78 && minOf(nr, nb) > 0.50) return "magenta"
-        if ((minOf(nr, ng) - nb) > 0.14 && nb < 0.80 && minOf(nr, ng) > 0.60) return "yellow"
-        if (lumRatio < 0.76 && chroma < 0.18) return "black"
+        if ((ng - nr) >= 0.035 && (nb - nr) >= 0.065 && nr < 0.80 && minOf(ng, nb) > 0.45) return "cyan"
+        if ((nr - ng) >= 0.14 && (nb - ng) >= 0.05 && ng < 0.78 && nr > 0.45 && nb > 0.30) return "magenta"
+        if ((minOf(nr, ng) - nb) >= 0.14 && nb < 0.82 && minOf(nr, ng) > 0.56) return "yellow"
+        if (lumRatio < 0.76 && chroma < 0.16 && (nb - nr) < 0.06) return "black"
         return null
     }
 
@@ -117,7 +117,13 @@ object OpticalNozzleScanner {
         return Triple(paperTop, px0, px1 + 1)
     }
 
-    private data class BandBounds(val ly0: Int, val ly1: Int, val activeX0: Int, val activeX1: Int)
+    private data class BandBounds(
+        val ly0: Int,
+        val ly1: Int,
+        val activeX0: Int,
+        val activeX1: Int,
+        val barBottomSamples: List<Pair<Int, Int>>,
+    )
 
     private fun locateLadderBand(
         pixels: IntArray,
@@ -163,6 +169,7 @@ object OpticalNozzleScanner {
 
         var activeX0 = x0
         var activeX1 = x1
+        val barBottoms = mutableListOf<Pair<Int, Int>>()
         val searchFrom: Int
         if (barCluster.isNotEmpty()) {
             val lastBarY = barCluster.last()
@@ -177,10 +184,32 @@ object OpticalNozzleScanner {
                 x += spanStep
             }
             if (colHits.size >= 10) {
-                activeX0 = colHits.first()
+                var splitIdx = 0
+                val gapJump = maxOf(6, ((x1 - x0) * 0.015).toInt())
+                for (k in 1 until minOf(colHits.size, 15)) {
+                    if (colHits[k] - colHits[k - 1] > gapJump) {
+                        splitIdx = k
+                        break
+                    }
+                }
+                activeX0 = colHits[splitIdx]
                 activeX1 = minOf(x1, colHits.last() + spanStep)
             }
-            searchFrom = lastBarY + maxOf(3, ((yEnd - yStart) * 0.015).toInt())
+            val barWinTop = maxOf(yStart, lastBarY - maxOf(10, ((yEnd - yStart) * 0.04).toInt()))
+            val barWinBot = minOf(yEnd, lastBarY + maxOf(8, ((yEnd - yStart) * 0.025).toInt()))
+            val numSlices = 12
+            val sliceW = maxOf(1, (activeX1 - activeX0) / numSlices)
+            for (si in 0 until numSlices) {
+                val sx = activeX0 + ((si + 0.5) * sliceW).toInt()
+                if (sx >= activeX1) continue
+                var maxBy = -1
+                for (by in barWinTop until barWinBot) {
+                    if (classifyPixel(pixels[by * w + sx], wr, wg, wb) != null) maxBy = by
+                }
+                if (maxBy >= 0) barBottoms.add(sx to maxBy)
+            }
+            val deepestBarY = barBottoms.maxOfOrNull { it.second } ?: lastBarY
+            searchFrom = deepestBarY + maxOf(3, ((yEnd - yStart) * 0.012).toInt())
         } else {
             searchFrom = yStart
         }
@@ -205,7 +234,7 @@ object OpticalNozzleScanner {
             ?: segments.maxByOrNull { it.last() - it.first() }
             ?: return null
         if (chosen.size < 6) return null
-        return BandBounds(chosen.first(), chosen.last() + 1, activeX0, activeX1)
+        return BandBounds(chosen.first(), chosen.last() + 1, activeX0, activeX1, barBottoms)
     }
 
     private fun evaluateSteps(
@@ -219,11 +248,13 @@ object OpticalNozzleScanner {
         wr: Double,
         wg: Double,
         wb: Double,
+        leftInsetPct: Double = 0.03,
+        rightInsetPct: Double = 0.03,
     ): ChannelScanResult {
         val spanH = maxOf(10, ly1 - ly0)
         val colW = maxOf(4, x1 - x0)
-        val ix0 = x0 + maxOf(1, (colW * 0.03).toInt())
-        val ix1 = maxOf(ix0 + 2, x1 - maxOf(1, (colW * 0.03).toInt()))
+        val ix0 = x0 + maxOf(1, (colW * leftInsetPct).toInt())
+        val ix1 = maxOf(ix0 + 2, x1 - maxOf(1, (colW * rightInsetPct).toInt()))
         val stepX = if ((ix1 - ix0) < 260) 1 else 2
         val stepH = spanH / 10.0
         val minBandHits = maxOf(2, (((ix1 - ix0) / stepX.toDouble()) * 0.025).toInt())
@@ -232,8 +263,8 @@ object OpticalNozzleScanner {
         for (s in 0 until 10) {
             val top = ly0 + s * stepH
             val bot = ly0 + (s + 1) * stepH
-            val sy0 = round(top + stepH * 0.18).toInt()
-            val sy1 = maxOf(sy0 + 1, round(bot - stepH * 0.18).toInt())
+            val sy0 = round(top + stepH * 0.12).toInt()
+            val sy1 = maxOf(sy0 + 1, round(bot - stepH * 0.12).toInt())
             var hits = 0
             for (y in sy0 until minOf(ly1, sy1)) {
                 var x = ix0
@@ -302,7 +333,7 @@ object OpticalNozzleScanner {
             report["black"] = evaluateSteps(
                 argbPixels,
                 width,
-                band.activeX0 + (activeW * 0.09).toInt(),
+                band.activeX0 + (activeW * 0.20).toInt(),
                 band.activeX1 - (activeW * 0.09).toInt(),
                 band.ly0,
                 band.ly1,
@@ -319,17 +350,40 @@ object OpticalNozzleScanner {
             activeChannels = if (hasK) listOf("cyan", "magenta", "yellow", "black") else listOf("cyan", "magenta", "yellow")
             val activeW = band.activeX1 - band.activeX0
             val colW = maxOf(4, activeW / activeChannels.size)
+            val barBottoms = band.barBottomSamples
+            val minBarY = barBottoms.minOfOrNull { it.second } ?: 0
+            val tiltSpan = if (barBottoms.isNotEmpty()) (barBottoms.maxOf { it.second } - minBarY) else 0
+            val unskewedH = maxOf(10, (band.ly1 - band.ly0) - minOf(tiltSpan, maxOf(2, ((band.ly1 - band.ly0) * 0.15).toInt())))
+
+            fun colYBounds(cx0: Int, cx1: Int): Pair<Int, Int> {
+                if (barBottoms.isEmpty()) return band.ly0 to band.ly1
+                val inCol = barBottoms.filter { (bx, _) -> bx in cx0..cx1 }.map { it.second }
+                val localB = if (inCol.isNotEmpty()) {
+                    inCol.sum() / inCol.size
+                } else {
+                    val mid = (cx0 + cx1) / 2
+                    barBottoms.minBy { kotlin.math.abs(it.first - mid) }.second
+                }
+                val colY0 = band.ly0 + maxOf(0, localB - minBarY)
+                return colY0 to minOf(sampleH, colY0 + unskewedH)
+            }
+
             activeChannels.forEachIndexed { idx, ch ->
                 val cx0 = band.activeX0 + idx * colW
                 val cx1 = if (idx == activeChannels.size - 1) band.activeX1 else cx0 + colW
-                var res = evaluateSteps(argbPixels, width, cx0, cx1, band.ly0, band.ly1, ch, wr, wg, wb)
-                if ((res.healthPct ?: 100.0) < 100.0) {
-                    val shift = (activeW * 0.03).toInt()
-                    val scW = maxOf(4, (band.activeX1 - (band.activeX0 + shift)) / activeChannels.size)
-                    val altX0 = band.activeX0 + shift + idx * scW
-                    val altX1 = if (idx == activeChannels.size - 1) band.activeX1 else altX0 + scW
-                    val alt = evaluateSteps(argbPixels, width, altX0, altX1, band.ly0, band.ly1, ch, wr, wg, wb)
-                    if ((alt.healthPct ?: 0.0) > (res.healthPct ?: 0.0)) res = alt
+                val (cy0, cy1) = colYBounds(cx0, cx1)
+                var res = evaluateSteps(argbPixels, width, cx0, cx1, cy0, cy1, ch, wr, wg, wb, leftInsetPct = 0.45, rightInsetPct = 0.02)
+                if (idx == 0 || (res.healthPct ?: 100.0) < 100.0) {
+                    for (shiftFrac in listOf(0.02, -0.02)) {
+                        val shift = (activeW * shiftFrac).toInt()
+                        val scX0 = band.activeX0 + shift
+                        val scW = maxOf(4, (band.activeX1 - scX0) / activeChannels.size)
+                        val altX0 = scX0 + idx * scW
+                        val altX1 = if (idx == activeChannels.size - 1) band.activeX1 else altX0 + scW
+                        val (ay0, ay1) = colYBounds(altX0, altX1)
+                        val alt = evaluateSteps(argbPixels, width, altX0, altX1, ay0, ay1, ch, wr, wg, wb, leftInsetPct = 0.45, rightInsetPct = 0.02)
+                        if ((alt.healthPct ?: 0.0) > (res.healthPct ?: 0.0)) res = alt
+                    }
                 }
                 report[ch] = res
             }

@@ -152,6 +152,14 @@ class EngineUnitTests {
         assertTrue(cyan.missingSteps.contains(4))
         assertEquals("cyan", report.targetChannel)
         assertEquals(4, report.targetStep)
+
+        // All 3 diagonal-numbered sheet modes scan cleanly at 100% when healthy
+        for (mode in listOf(PurgeMode.K, PurgeMode.CMY, PurgeMode.CMYK)) {
+            val healthy = gen.buildPurgeSurface(mode)
+            val rep = OpticalNozzleScanner.analyze(healthy.pixels, healthy.width, healthy.height)
+            assertTrue("Expected success for $mode", rep.success)
+            assertEquals("Expected 100% health for $mode", 100.0, rep.overallHealthPct, 0.01)
+        }
     }
 
     private fun ByteArrayOutputStream.writeAttr(tag: Int, name: String, strVal: String) {

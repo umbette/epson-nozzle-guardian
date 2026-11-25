@@ -125,6 +125,7 @@ class PatternGenerator:
         col_w: int,
         col_h: int,
         color: Any,
+        diag_label_color: Any = None,
     ) -> None:
         num_steps = 10
         pitch = col_h / float(num_steps)
@@ -133,18 +134,31 @@ class PatternGenerator:
         step_len = max(8, self._mm(2.2))
         step_dx = max(6, self._mm(1.4))
         ladder_w = (num_steps - 1) * step_dx + step_len
-        block_gap = max(8, self._mm(2.8))
+        block_gap = max(6, self._mm(2.4))
+        diag_pad = self._mm(3.6) if diag_label_color is not None else 0
+        font_step = self._font(1.9, bold=True) if diag_label_color is not None else None
+        lbl_gap = max(2, self._mm(0.8))
 
-        curr_x = x0
+        curr_x = x0 + diag_pad
+        block_idx = 0
         while curr_x + ladder_w <= x0 + col_w:
             for i in range(num_steps):
                 sy = int(y0 + (i + 0.5) * pitch)
                 sx = int(curr_x + i * step_dx)
+                if block_idx == 0 and diag_label_color is not None and font_step is not None:
+                    label = str(i + 1)
+                    bbox = draw.textbbox((0, 0), label, font=font_step)
+                    tw = bbox[2] - bbox[0]
+                    th = bbox[3] - bbox[1]
+                    tx = max(x0, sx - tw - lbl_gap)
+                    ty = int(sy - th / 2 - bbox[1])
+                    draw.text((tx, ty), label, fill=diag_label_color, font=font_step)
                 draw.line([(sx, sy), (sx + step_len, sy)], fill=color, width=rung_w)
                 if i < num_steps - 1:
                     next_sy = int(y0 + (i + 1.5) * pitch)
                     draw.line([(sx + step_len, sy), (curr_x + (i + 1) * step_dx, next_sy)], fill=color, width=diag_w)
             curr_x += ladder_w + block_gap
+            block_idx += 1
 
         tick = max(3, self._mm(1.2))
         draw.line([(x0 - tick, y0), (x0, y0)], fill=color, width=diag_w)
@@ -171,7 +185,7 @@ class PatternGenerator:
             draw.text((x0 + self._mm(5.0), y_cursor), "NOZZLE GUARDIAN — TEST NERO (K) [1-10]", fill=0, font=font_title)
             y_cursor += self._mm(6.5)
 
-            badge_w = self._mm(8.0)
+            badge_w = self._mm(6.0)
             draw.text((x0, y_cursor + self._mm(0.2)), "K", fill=0, font=font_badge)
             draw.rectangle([x0 + badge_w, y_cursor, x1, y_cursor + self.stripe_height_px], fill=0)
 
@@ -191,6 +205,7 @@ class PatternGenerator:
                 self.stripe_width_px - (2 * ruler_w),
                 col_h_px,
                 color=0,
+                diag_label_color=0,
             )
             return img
 
@@ -229,7 +244,7 @@ class PatternGenerator:
         )
         y_cursor += self._mm(6.5)
 
-        badge_w = self._mm(8.0)
+        badge_w = self._mm(6.0)
         for short_code, _name, color in colors_to_draw:
             y0 = y_cursor
             y1 = y0 + self.stripe_height_px
@@ -239,24 +254,33 @@ class PatternGenerator:
             y_cursor = y1 + self.stripe_spacing_px
 
         ladder_y0 = self._compute_ladder_y(len(colors_to_draw))
-        ruler_w = self._mm(7.5)
-        ruler_color = COLOR_TEXT_NEUTRAL if include_black else COLOR_MAGENTA
         fid_sz = max(8, self._mm(2.8))
         self._draw_fiducial(draw, x0, ladder_y0, fid_color)
         self._draw_fiducial(draw, x1 - fid_sz, ladder_y0, fid_color)
         self._draw_fiducial(draw, x0, ladder_y0 + col_h_px - fid_sz, fid_color)
         self._draw_fiducial(draw, x1 - fid_sz, ladder_y0 + col_h_px - fid_sz, fid_color)
-        self._draw_ruler_labels(draw, x0 + self._mm(5.8), ladder_y0, col_h_px, color=ruler_color, align_right=True)
 
-        matrix_x0 = x0 + ruler_w
-        matrix_w = self.stripe_width_px - ruler_w - fid_sz - self._mm(1.5)
+        matrix_x0 = x0 + badge_w
+        matrix_w = self.stripe_width_px - badge_w - fid_sz - self._mm(1.5)
         num_cols = len(colors_to_draw)
-        gap_px = self._mm(5.0)
+        gap_px = self._mm(4.0)
         col_w_px = int((matrix_w - (num_cols - 1) * gap_px) / num_cols)
 
-        for i, (short_code, name, color) in enumerate(colors_to_draw):
+        for i, (short_code, _name, color) in enumerate(colors_to_draw):
             col_x = matrix_x0 + i * (col_w_px + gap_px)
-            self._draw_ladder_pattern(draw, col_x, ladder_y0, col_w_px, col_h_px, color=color)
+            if short_code == "Y":
+                diag_color = COLOR_TEXT_NEUTRAL if include_black else (210, 110, 0)
+            else:
+                diag_color = color
+            self._draw_ladder_pattern(
+                draw,
+                col_x,
+                ladder_y0,
+                col_w_px,
+                col_h_px,
+                color=color,
+                diag_label_color=diag_color,
+            )
 
         footer_y = ladder_y0 + col_h_px + self._mm(5.5)
         for i, (short_code, name, color) in enumerate(colors_to_draw):

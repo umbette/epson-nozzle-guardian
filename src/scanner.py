@@ -105,13 +105,13 @@ def _classify_pixel(r: int, g: int, b: int, wr: float, wg: float, wb: float) -> 
     chroma = max_c - min_c
     lum_ratio = (nr + ng + nb) / 3.0
 
-    if (min(ng, nb) - nr) > 0.16 and nr < 0.78 and min(ng, nb) > 0.52:
+    if (ng - nr) >= 0.035 and (nb - nr) >= 0.065 and nr < 0.80 and min(ng, nb) > 0.45:
         return "cyan"
-    if (min(nr, nb) - ng) > 0.16 and ng < 0.78 and min(nr, nb) > 0.50:
+    if (nr - ng) >= 0.14 and (nb - ng) >= 0.05 and ng < 0.78 and nr > 0.45 and nb > 0.30:
         return "magenta"
-    if (min(nr, ng) - nb) > 0.14 and nb < 0.80 and min(nr, ng) > 0.60:
+    if (min(nr, ng) - nb) >= 0.14 and nb < 0.82 and min(nr, ng) > 0.56:
         return "yellow"
-    if lum_ratio < 0.76 and chroma < 0.18:
+    if lum_ratio < 0.76 and chroma < 0.16 and (nb - nr) < 0.06:
         return "black"
     return None
 
@@ -148,10 +148,10 @@ def _locate_ladder_band(
     wr: float,
     wg: float,
     wb: float,
-) -> Optional[Tuple[int, int, int, int]]:
+) -> Optional[Tuple[int, int, int, int, List[Tuple[int, int]]]]:
     """
     Separates top solid purge bars from the staircase ladder below.
-    Returns (ladder_y0, ladder_y1, active_x0, active_x1) or None if blank.
+    Returns (ladder_y0, ladder_y1, active_x0, active_x1, bar_bottom_samples) or None if blank.
     """
     step_x = max(1, (x1 - x0) // 220)
     samples_per_row = max(1, (x1 - x0) // step_x)
@@ -181,6 +181,7 @@ def _locate_ladder_band(
             bar_cluster = clusters[0]
 
     active_x0, active_x1 = x0, x1
+    bar_bottom_samples: List[Tuple[int, int]] = []
     if bar_cluster:
         last_bar_y = max(bar_cluster)
         col_hits = []
@@ -190,9 +191,29 @@ def _locate_ladder_band(
             if any(_classify_pixel(*pixels[x, by], wr, wg, wb) is not None for by in sample_ys):
                 col_hits.append(x)
         if len(col_hits) >= 10:
-            active_x0 = col_hits[0]
+            # Skip isolated left badge letters ('C','M','Y','K') separated from the solid purge bar body
+            split_idx = 0
+            gap_jump = max(6, int((x1 - x0) * 0.015))
+            for k in range(1, min(len(col_hits), 15)):
+                if col_hits[k] - col_hits[k - 1] > gap_jump:
+                    split_idx = k
+                    break
+            active_x0 = col_hits[split_idx]
             active_x1 = min(x1, col_hits[-1] + span_step)
-        search_from = last_bar_y + max(3, int((y_end - y_start) * 0.015))
+
+        bar_win_top = max(y_start, last_bar_y - max(10, int((y_end - y_start) * 0.04)))
+        bar_win_bot = min(y_end, last_bar_y + max(8, int((y_end - y_start) * 0.025)))
+        num_slices = 12
+        slice_w = max(1, (active_x1 - active_x0) // num_slices)
+        for si in range(num_slices):
+            sx = active_x0 + int((si + 0.5) * slice_w)
+            if sx >= active_x1:
+                continue
+            by_hits = [by for by in range(bar_win_top, bar_win_bot) if _classify_pixel(*pixels[sx, by], wr, wg, wb) is not None]
+            if by_hits:
+                bar_bottom_samples.append((sx, max(by_hits)))
+
+        search_from = (max(b for _, b in bar_bottom_samples) if bar_bottom_samples else last_bar_y) + max(3, int((y_end - y_start) * 0.012))
     else:
         search_from = y_start
 
@@ -214,7 +235,7 @@ def _locate_ladder_band(
     chosen = significant[0] if significant else (max(segments, key=lambda s: s[-1] - s[0]) if segments else [])
     if len(chosen) < 6:
         return None
-    return chosen[0], chosen[-1] + 1, active_x0, active_x1
+    return chosen[0], chosen[-1] + 1, active_x0, active_x1, bar_bottom_samples
 
 
 def _evaluate_ladder_steps(
@@ -227,11 +248,13 @@ def _evaluate_ladder_steps(
     wr: float,
     wg: float,
     wb: float,
+    left_inset_pct: float = 0.03,
+    right_inset_pct: float = 0.03,
 ) -> Dict[str, Any]:
     span_h = max(10, ly1 - ly0)
     col_w = max(4, x1 - x0)
-    ix0 = x0 + max(1, int(col_w * 0.03))
-    ix1 = max(ix0 + 2, x1 - max(1, int(col_w * 0.03)))
+    ix0 = x0 + max(1, int(col_w * left_inset_pct))
+    ix1 = max(ix0 + 2, x1 - max(1, int(col_w * right_inset_pct)))
     step_x = 1 if (ix1 - ix0) < 260 else 2
     step_h = span_h / 10.0
     min_band_hits = max(2, int((ix1 - ix0) / step_x * 0.025))
@@ -240,8 +263,8 @@ def _evaluate_ladder_steps(
     for s in range(10):
         band_top = ly0 + s * step_h
         band_bot = ly0 + (s + 1) * step_h
-        sy0 = int(round(band_top + step_h * 0.18))
-        sy1 = max(sy0 + 1, int(round(band_bot - step_h * 0.18)))
+        sy0 = int(round(band_top + step_h * 0.12))
+        sy1 = max(sy0 + 1, int(round(band_bot - step_h * 0.12)))
         band_hits = 0
         for y in range(sy0, min(ly1, sy1)):
             band_hits += _row_matches(pixels, ix0, ix1, y, wr, wg, wb, target_ch=ch, step_x=step_x)
@@ -313,7 +336,24 @@ def analyze_nozzle_sheet(image_bytes: bytes) -> Dict[str, Any]:
             "message": "Nessun pattern Nozzle Guardian rilevato nella fascia superiore del foglio.",
         }
 
-    ly0, ly1, active_x0, active_x1 = band
+    ly0, ly1, active_x0, active_x1, bar_bottoms = band
+    tilt_span = (max(b for _, b in bar_bottoms) - min(b for _, b in bar_bottoms)) if bar_bottoms else 0
+    min_bar_y = min(b for _, b in bar_bottoms) if bar_bottoms else 0
+    unskewed_h = max(10, (ly1 - ly0) - min(tilt_span, max(2, int((ly1 - ly0) * 0.15))))
+
+    def _column_y_bounds(cx0: int, cx1: int) -> Tuple[int, int]:
+        if not bar_bottoms:
+            return ly0, ly1
+        in_col = [b for bx, b in bar_bottoms if cx0 <= bx <= cx1]
+        if not in_col:
+            mid = (cx0 + cx1) // 2
+            nearest = min(bar_bottoms, key=lambda pair: abs(pair[0] - mid))
+            local_b = nearest[1]
+        else:
+            local_b = sum(in_col) // len(in_col)
+        col_y0 = ly0 + max(0, local_b - min_bar_y)
+        col_y1 = min(sh, col_y0 + unskewed_h)
+        return col_y0, col_y1
 
     top_band_counts: Dict[str, int] = {ch: 0 for ch in CHANNELS_ORDER}
     scan_step_x = max(1, (active_x1 - active_x0) // 180)
@@ -334,7 +374,8 @@ def analyze_nozzle_sheet(image_bytes: bytes) -> Dict[str, Any]:
         sheet_mode = "k"
         active_channels = ["black"]
         active_w = active_x1 - active_x0
-        ladder_x0 = active_x0 + int(active_w * 0.09)
+        # Skip leftmost Block 1 diagonal step numbers; inspect pure inner calibration blocks
+        ladder_x0 = active_x0 + int(active_w * 0.20)
         ladder_x1 = active_x1 - int(active_w * 0.09)
         channels_report["black"] = _evaluate_ladder_steps(pixels, ladder_x0, ladder_x1, ly0, ly1, "black", wr, wg, wb)
         for ch in ("cyan", "magenta", "yellow"):
@@ -349,15 +390,24 @@ def analyze_nozzle_sheet(image_bytes: bytes) -> Dict[str, Any]:
         for idx, ch in enumerate(matrix_channels):
             cx0 = mat_x0 + idx * col_w
             cx1 = active_x1 if idx == len(matrix_channels) - 1 else (cx0 + col_w)
-            res = _evaluate_ladder_steps(pixels, cx0, cx1, ly0, ly1, ch, wr, wg, wb)
+            col_y0, col_y1 = _column_y_bounds(cx0, cx1)
+            # Evaluate the label-free right staircase block (Block 2) so diagonal 1..10 labels never pollute rung detection
+            res = _evaluate_ladder_steps(
+                pixels, cx0, cx1, col_y0, col_y1, ch, wr, wg, wb, left_inset_pct=0.45, right_inset_pct=0.02
+            )
             if idx == 0 or res["health_pct"] < 100.0:
-                shift = int(active_w * 0.03)
-                sc_w = max(4, (active_x1 - (active_x0 + shift)) // len(matrix_channels))
-                alt_x0 = active_x0 + shift + idx * sc_w
-                alt_x1 = active_x1 if idx == len(matrix_channels) - 1 else (alt_x0 + sc_w)
-                alt = _evaluate_ladder_steps(pixels, alt_x0, alt_x1, ly0, ly1, ch, wr, wg, wb)
-                if alt["health_pct"] > res["health_pct"]:
-                    res = alt
+                for shift_frac in (0.02, -0.02):
+                    shift = int(active_w * shift_frac)
+                    sc_x0 = active_x0 + shift
+                    sc_w = max(4, (active_x1 - sc_x0) // len(matrix_channels))
+                    alt_x0 = sc_x0 + idx * sc_w
+                    alt_x1 = active_x1 if idx == len(matrix_channels) - 1 else (alt_x0 + sc_w)
+                    alt_y0, alt_y1 = _column_y_bounds(alt_x0, alt_x1)
+                    alt = _evaluate_ladder_steps(
+                        pixels, alt_x0, alt_x1, alt_y0, alt_y1, ch, wr, wg, wb, left_inset_pct=0.45, right_inset_pct=0.02
+                    )
+                    if alt["health_pct"] > res["health_pct"]:
+                        res = alt
             channels_report[ch] = res
         if not has_k:
             channels_report["black"] = {"present": False, "healthy": None, "health_pct": None, "missing_steps": []}
