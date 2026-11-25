@@ -131,21 +131,18 @@ class EngineUnitTests {
 
     @Test
     fun surgicalThermalSafetyAndScannerDetectsDamagedCyanStep() {
-        val gen = PatternGenerator(dpi = 150)
+        val gen = PatternGenerator(dpi = 300)
         val thermal = gen.buildSurgicalSheet(NozzleChannel.MAGENTA, step = 4, requestedBursts = 7, headTechnology = HeadTechnology.THERMAL)
         assertEquals(3, thermal.effectiveBursts)
 
         val sheet = gen.buildPurgeSurface(PurgeMode.CMYK)
-        // Erase cyan ladder step #4 across the entire cyan ladder region to simulate a clogged nozzle #4
-        val topMarginPx = ((10.0 / 25.4) * 150).toInt()
-        val headerPx = ((6.5 / 25.4) * 150).toInt()
-        val barH = ((3.0 / 25.4) * 150).toInt()
-        val gapH = ((1.4 / 25.4) * 150).toInt()
-        val ladderY0 = topMarginPx + headerPx + 4 * (barH + gapH) + ((5.5 / 25.4) * 150).toInt()
-        val colH = ((18.0 / 25.4) * 150).toInt()
-        val stepTop = (ladderY0 + 3 * (colH / 10.0)).toInt()
-        val stepBot = (ladderY0 + 4 * (colH / 10.0)).toInt()
-        sheet.fillRect(0, stepTop, (sheet.width * 0.42).toInt(), stepBot, 0xFFFFFFFF.toInt())
+        // Erase cyan ladder step #4 across the cyan column to simulate a single clogged nozzle #4
+        val ladderY0 = gen.ladderY0(PurgeMode.CMYK)
+        val colH = gen.colHeightPx
+        val pitch = colH / 10.0
+        val stepTop = (ladderY0 + 3 * pitch).toInt()
+        val stepBot = (ladderY0 + 4 * pitch).toInt()
+        sheet.fillRect(0, stepTop, (sheet.width * 0.30).toInt(), stepBot, 0xFFFFFFFF.toInt())
 
         val report = OpticalNozzleScanner.analyze(sheet.pixels, sheet.width, sheet.height)
         assertTrue(report.success)

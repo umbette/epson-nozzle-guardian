@@ -19,8 +19,15 @@ class PatternGenerator(
     private val stripeHeightPx: Int = mm(3.0)
     private val stripeSpacingPx: Int = mm(1.4)
     private val stripeWidthPx: Int = widthPx - (2 * sideMarginPx)
+    val colHeightPx: Int = mm(18.0)
 
     private fun mm(valMm: Double): Int = maxOf(1, ((valMm / 25.4) * dpi).roundToInt())
+
+    fun ladderY0(mode: PurgeMode): Int = when (mode) {
+        PurgeMode.K -> computeLadderY(1)
+        PurgeMode.CMY -> computeLadderY(3)
+        PurgeMode.CMYK -> computeLadderY(4)
+    }
 
     private fun drawFiducial(surface: RasterSurface, x0: Int, y0: Int, argb: Int): Int {
         val sz = maxOf(8, mm(2.8))
