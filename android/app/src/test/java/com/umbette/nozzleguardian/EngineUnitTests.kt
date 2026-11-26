@@ -26,6 +26,7 @@ import com.umbette.nozzleguardian.engine.PurgeMode
 import com.umbette.nozzleguardian.engine.PwgRasterEncoder
 import com.umbette.nozzleguardian.engine.SnmpCodec
 import com.umbette.nozzleguardian.engine.SyncSnapshotCodec
+import com.umbette.nozzleguardian.engine.TelemetryPayloadBuilder
 import com.umbette.nozzleguardian.engine.WorkspaceEngine
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
