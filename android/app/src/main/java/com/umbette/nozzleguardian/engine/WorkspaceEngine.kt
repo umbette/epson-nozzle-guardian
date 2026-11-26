@@ -131,16 +131,19 @@ object WorkspaceEngine {
     ): List<PrinterProfile> {
         val cleanSsid = currentWifiSsid?.trim()?.removePrefix("\"")?.removeSuffix("\"").orEmpty()
         val cleanFp = currentNetworkFingerprint?.trim().orEmpty()
+        val anyMatchedByFingerprint = cleanFp.isNotBlank() &&
+            workspace.locations.any { it.networkFingerprint.trim().equals(cleanFp, ignoreCase = true) }
         val locById = workspace.locations.associateBy { it.id }
         return workspace.printers.filter { printer ->
             if (printer.state.printerHost.isBlank()) return@filter false
             val loc = locById[printer.locationId] ?: return@filter true
             val locFp = loc.networkFingerprint.trim()
-            if (locFp.isNotBlank() && cleanFp.isNotBlank()) {
-                return@filter locFp.equals(cleanFp, ignoreCase = true)
-            }
             val locSsid = loc.wifiSsid.trim()
-            locSsid.isBlank() || cleanSsid.isBlank() || locSsid.equals(cleanSsid, ignoreCase = true)
+            when {
+                locFp.isNotBlank() && cleanFp.isNotBlank() -> locFp.equals(cleanFp, ignoreCase = true)
+                anyMatchedByFingerprint -> locFp.isBlank() && locSsid.isBlank()
+                else -> locSsid.isBlank() || cleanSsid.isBlank() || locSsid.equals(cleanSsid, ignoreCase = true)
+            }
         }
     }
 
