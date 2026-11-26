@@ -37,6 +37,9 @@ class PrinterConfig(BaseModel):
     use_tls: bool = True
     auto_purge_enabled: bool = False
     media_size: str = "auto"
+    preferred_format: str = "auto"
+    media_type: str = "auto"
+    ink_profile: str = "auto"
 
 
 class PatternConfig(BaseModel):
@@ -101,6 +104,12 @@ class Settings(BaseSettings):
             printer_data["auto_purge_enabled"] = bool(ha_options["auto_purge_enabled"])
         if "media_size" in ha_options and ha_options["media_size"]:
             printer_data["media_size"] = str(ha_options["media_size"])
+        if "preferred_format" in ha_options and ha_options["preferred_format"]:
+            printer_data["preferred_format"] = str(ha_options["preferred_format"])
+        if "media_type" in ha_options and ha_options["media_type"]:
+            printer_data["media_type"] = str(ha_options["media_type"])
+        if "ink_profile" in ha_options and ha_options["ink_profile"]:
+            printer_data["ink_profile"] = str(ha_options["ink_profile"])
         
         host_env = os.getenv("PRINTER_HOST") or os.getenv("EPSON_HOST")
         if host_env:
@@ -124,6 +133,18 @@ class Settings(BaseSettings):
         media_env = os.getenv("PRINTER_MEDIA")
         if media_env:
             printer_data["media_size"] = media_env
+
+        fmt_env = os.getenv("PRINTER_FORMAT")
+        if fmt_env:
+            printer_data["preferred_format"] = fmt_env
+
+        mtype_env = os.getenv("PRINTER_MEDIA_TYPE")
+        if mtype_env:
+            printer_data["media_type"] = mtype_env
+
+        profile_env = os.getenv("PRINTER_INK_PROFILE")
+        if profile_env:
+            printer_data["ink_profile"] = profile_env
 
         data["printer"] = printer_data
 

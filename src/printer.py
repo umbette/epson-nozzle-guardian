@@ -71,6 +71,12 @@ class PrinterStatus:
     supported_formats: List[str] = field(default_factory=list)
     markers: List[Dict[str, Any]] = field(default_factory=list)
     endpoint_path: str = "/ipp/print"
+    pwg_resolutions_supported: List[int] = field(default_factory=list)
+    pwg_document_types_supported: List[str] = field(default_factory=list)
+    print_color_modes_supported: List[str] = field(default_factory=list)
+    media_types_supported: List[str] = field(default_factory=list)
+    tank_count: int = 4
+    ink_profile: str = "cmyk"
 
     @property
     def has_channel_telemetry(self) -> bool:
@@ -138,6 +144,39 @@ def _classify_printer_hardware(model_or_text: str, marker_types: List[str]) -> T
     return "inkjet", "piezo"
 
 
+def _parse_pwg_resolutions(raw_res: Any) -> List[int]:
+    """Extracts unique integer DPI values from IPP pwg-raster-document-resolution-supported."""
+    out: List[int] = []
+    for item in _as_list(raw_res):
+        if isinstance(item, (tuple, list)) and len(item) >= 3:
+            x_res, _y_res, unit = int(item[0]), int(item[1]), int(item[2])
+            dpi = x_res if unit == 3 else (int(round(x_res * 2.54)) if unit == 4 else x_res)
+            if dpi > 0 and dpi not in out:
+                out.append(dpi)
+        elif isinstance(item, int) and item > 0 and item not in out:
+            out.append(item)
+    return sorted(out)
+
+
+def _detect_ink_profile(model: str, markers: List[Dict[str, Any]]) -> Tuple[int, str]:
+    """Detects 6-tank Claria / photo printers (CMY + BK + PB + GY) vs standard 4-tank CMYK."""
+    low = (model or "").lower()
+    six_tank_models = ("et-8550", "et-8500", "l8180", "l8160", "l8050", "l18050", "xp-15000", "xp-8700", "xp-8600", "xp-8500")
+    if any(m in low for m in six_tank_models):
+        return max(6, len(markers)), "cmyk6"
+
+    ink_markers = [
+        m for m in markers
+        if "waste" not in str(m.get("type", "")).lower()
+        and "maintenance" not in str(m.get("name", "")).lower()
+    ]
+    marker_names_low = " ".join(str(m.get("name", "")).lower() for m in ink_markers)
+    has_photo_gray = any(tok in marker_names_low for tok in ("photo black", "gray", "grey", "pb", "gy", "matte black"))
+    if len(ink_markers) >= 5 and (has_photo_gray or len(ink_markers) >= 6):
+        return len(ink_markers), "cmyk6"
+    return 4, "cmyk"
+
+
 class UniversalPrinterClient:
     """Pure-Python driverless IPP, Web EWS & SNMP printer client supporting all major vendors."""
 
@@ -149,12 +188,18 @@ class UniversalPrinterClient:
         timeout_sec: Optional[float] = None,
         preferred_media: Optional[str] = None,
         snmp_port: int = 161,
+        preferred_format: Optional[str] = None,
+        preferred_media_type: Optional[str] = None,
+        preferred_ink_profile: Optional[str] = None,
     ):
         self.host = settings.printer.host if host is None else host
         self.port = settings.printer.port if port is None else int(port)
         self.use_tls = settings.printer.use_tls if use_tls is None else bool(use_tls)
         self.timeout = settings.printer.timeout_sec if timeout_sec is None else float(timeout_sec)
         self.preferred_media = getattr(settings.printer, "media_size", "auto") if preferred_media is None else preferred_media
+        self.preferred_format = getattr(settings.printer, "preferred_format", "auto") if preferred_format is None else preferred_format
+        self.preferred_media_type = getattr(settings.printer, "media_type", "auto") if preferred_media_type is None else preferred_media_type
+        self.preferred_ink_profile = getattr(settings.printer, "ink_profile", "auto") if preferred_ink_profile is None else preferred_ink_profile
         self.snmp_port = snmp_port
         self._lock = asyncio.Lock()
         self.last_status: Optional[PrinterStatus] = None
@@ -163,11 +208,26 @@ class UniversalPrinterClient:
     def is_busy(self) -> bool:
         return self._lock.locked()
 
-    def configure(self, host: str, port: int = 631, use_tls: bool = True, preferred_media: str = "auto") -> None:
+    def configure(
+        self,
+        host: str,
+        port: int = 631,
+        use_tls: bool = True,
+        preferred_media: str = "auto",
+        preferred_format: Optional[str] = None,
+        preferred_media_type: Optional[str] = None,
+        preferred_ink_profile: Optional[str] = None,
+    ) -> None:
         self.host = host.strip()
         self.port = int(port)
         self.use_tls = bool(use_tls)
         self.preferred_media = preferred_media
+        if preferred_format is not None:
+            self.preferred_format = preferred_format
+        if preferred_media_type is not None:
+            self.preferred_media_type = preferred_media_type
+        if preferred_ink_profile is not None:
+            self.preferred_ink_profile = preferred_ink_profile
 
     def get_ipp_uri(self) -> str:
         proto = "ipps" if self.use_tls else "ipp"
@@ -176,12 +236,76 @@ class UniversalPrinterClient:
     def negotiate_format(self, supported_formats: Optional[List[str]] = None) -> str:
         """Selects the safest driverless document format supported by the target printer."""
         supported = {str(f).lower().strip() for f in (supported_formats or [])}
+        pref = (self.preferred_format or "auto").lower().strip()
+        if pref and pref != "auto":
+            if not supported or pref in supported:
+                return pref
         if not supported:
             return "image/pwg-raster"
         for candidate in FORMAT_PREFERENCE:
             if candidate in supported:
                 return candidate
         return "image/png"
+
+    def get_fallback_formats(self, primary_format: str, supported_formats: Optional[List[str]] = None) -> List[str]:
+        """Returns alternative supported document formats to try if primary_format fails."""
+        primary = (primary_format or "").lower().strip()
+        supported = {str(f).lower().strip() for f in (supported_formats or [])}
+        if supported:
+            return [f for f in FORMAT_PREFERENCE if f != primary and f in supported]
+        return [f for f in FORMAT_PREFERENCE if f != primary]
+
+    def negotiate_pwg_dpi(self, supported_resolutions: Optional[List[int]] = None, preferred_dpi: int = 300) -> int:
+        """Selects a DPI supported by the printer's pwg-raster-document-resolution-supported."""
+        res_list = [int(r) for r in (supported_resolutions or []) if int(r) > 0]
+        if not res_list:
+            return int(preferred_dpi)
+        if preferred_dpi in res_list:
+            return int(preferred_dpi)
+        for candidate in (300, 360, 600, 720, 180, 150, 200):
+            if candidate in res_list:
+                return candidate
+        return min(res_list, key=lambda r: abs(r - preferred_dpi))
+
+    def negotiate_pwg_force_rgb(self, mode: str, pwg_types_supported: Optional[List[str]] = None) -> bool:
+        """Returns True if a black-only job must be encoded as sRGB because the printer lacks sgray_8."""
+        if mode.lower().strip() not in ("k", "black", "bk"):
+            return False
+        types = {str(t).lower().strip() for t in (pwg_types_supported or [])}
+        return bool(types and "sgray_8" not in types and "srgb_8" in types)
+
+    def negotiate_color_mode(
+        self,
+        mode: str,
+        print_color_modes_supported: Optional[List[str]] = None,
+        force_rgb: bool = False,
+    ) -> str:
+        """Selects RFC 8011 print-color-mode compatible with the job payload and printer capabilities."""
+        supported = {str(c).lower().strip() for c in (print_color_modes_supported or [])}
+        if mode.lower().strip() in ("k", "black", "bk") and not force_rgb:
+            if not supported or "monochrome" in supported:
+                return "monochrome"
+        if not supported or "color" in supported:
+            return "color"
+        if "auto" in supported:
+            return "auto"
+        return next(iter(supported))
+
+    def negotiate_media_type(
+        self,
+        mode: str,
+        media_types_supported: Optional[List[str]] = None,
+    ) -> Optional[str]:
+        """Selects optional IPP media-type hint (e.g. photographic-glossy for ET-8550 PB+GY paths)."""
+        pref = (self.preferred_media_type or "auto").lower().strip()
+        if pref and pref != "auto":
+            return pref
+        if mode.lower().strip() == "pb_gy":
+            supported = [str(m).lower().strip() for m in (media_types_supported or [])]
+            for candidate in ("photographic-glossy", "photographic-semi-gloss", "photographic-matte", "photographic"):
+                if candidate in supported:
+                    return candidate
+        return None
 
     def negotiate_media(self, ipp_media_default: Optional[str] = None, ipp_media_supported: Optional[List[str]] = None) -> str:
         if self.preferred_media and self.preferred_media != "auto":
@@ -279,6 +403,10 @@ class UniversalPrinterClient:
         supported_formats = [str(f) for f in _as_list(attrs.get("document-format-supported"))]
         media_supported = [str(m) for m in _as_list(attrs.get("media-supported"))]
         media_default = self.negotiate_media(attrs.get("media-default"), media_supported)
+        pwg_resolutions_supported = _parse_pwg_resolutions(attrs.get("pwg-raster-document-resolution-supported"))
+        pwg_document_types_supported = [str(t).lower() for t in _as_list(attrs.get("pwg-raster-document-type-supported"))]
+        print_color_modes_supported = [str(c).lower() for c in _as_list(attrs.get("print-color-mode-supported"))]
+        media_types_supported = [str(mt).lower() for mt in _as_list(attrs.get("media-type-supported"))]
 
         mono_pages = ews_status.monochrome_pages if ews_status else None
         color_pages = ews_status.color_pages if ews_status else None
@@ -300,6 +428,14 @@ class UniversalPrinterClient:
             if not markers and snmp_res.markers:
                 markers = snmp_res.markers
 
+        tank_count, detected_profile = _detect_ink_profile(model, markers)
+        if self.preferred_ink_profile in ("cmyk", "cmyk6"):
+            ink_profile = self.preferred_ink_profile
+            if ink_profile == "cmyk6" and tank_count < 6:
+                tank_count = 6
+        else:
+            ink_profile = detected_profile
+
         status = PrinterStatus(
             online=True,
             monochrome_pages=mono_pages,
@@ -314,6 +450,12 @@ class UniversalPrinterClient:
             supported_formats=supported_formats,
             markers=markers,
             endpoint_path=ipp_res.endpoint_path if ipp_res.success else "/ipp/print",
+            pwg_resolutions_supported=pwg_resolutions_supported,
+            pwg_document_types_supported=pwg_document_types_supported,
+            print_color_modes_supported=print_color_modes_supported,
+            media_types_supported=media_types_supported,
+            tank_count=tank_count,
+            ink_profile=ink_profile,
         )
         self.last_status = status
         return status
@@ -437,6 +579,8 @@ class UniversalPrinterClient:
         mode: str,
         media: str = "iso_a4_210x297mm",
         endpoint_path: str = "/ipp/print",
+        color_mode_override: Optional[str] = None,
+        media_type: Optional[str] = None,
     ) -> PurgeJobResult:
         """Atomically dispatches a compiled purge job over pure-Python IPP."""
         if not self.host:
@@ -445,7 +589,7 @@ class UniversalPrinterClient:
         if self._lock.locked():
             return PurgeJobResult(status=PurgeJobStatus.BUSY, message="Printer client is currently busy executing another job.")
 
-        color_mode = "monochrome" if mode == "k" else "color"
+        color_mode = color_mode_override or ("monochrome" if mode == "k" else "color")
         async with self._lock:
             if is_local_queue_target(self.host):
                 ok, msg = await send_local_print_job(
@@ -467,6 +611,7 @@ class UniversalPrinterClient:
                 color_mode=color_mode,
                 use_tls=self.use_tls,
                 endpoint_path=endpoint_path,
+                media_type=media_type,
             )
             if ok:
                 return PurgeJobResult(status=PurgeJobStatus.ACCEPTED, message=msg)

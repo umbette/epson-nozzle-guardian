@@ -346,3 +346,146 @@ def test_scanner_diagonal_layout_all_modes_and_warm_epson_lighting(tmp_path):
     assert _classify_pixel(157, 68, 88, 206.0, 187.0, 174.0) == "magenta"
     assert _classify_pixel(205, 163, 19, 206.0, 187.0, 174.0) == "yellow"
     assert _classify_pixel(77, 62, 57, 206.0, 187.0, 174.0) == "black"
+
+
+def test_pwg_header_media_size_name_and_media_type_offsets():
+    img = Image.new("RGB", (64, 32), (255, 255, 255))
+    stream = encode_pwg_raster(
+        img,
+        dpi=300,
+        media_name="na_letter_8.5x11in",
+        media_type="photographic-glossy",
+    )
+    meta, _ = decode_pwg_raster(stream)
+    assert meta["media_type"] == "PhotographicGlossy"
+    assert meta["media_size_name"] == "na_letter_8.5x11in"
+
+
+def test_et4810_dpi_colorspace_negotiation_and_format_fallback(tmp_path):
+    from src.printer import UniversalPrinterClient
+
+    client = UniversalPrinterClient(host="172.20.80.5", port=631, use_tls=True)
+    # PrecisionCore printers (ET-4810) advertise 300/600 dpi, not 360 dpi
+    assert client.negotiate_pwg_dpi([300, 600], preferred_dpi=360) == 300
+    assert client.negotiate_pwg_dpi([360, 720], preferred_dpi=300) == 360
+
+    # If a printer supports only srgb_8 (lacking sgray_8), K mode must encode sRGB + color
+    assert client.negotiate_pwg_force_rgb("k", ["srgb_8"]) is True
+    assert client.negotiate_pwg_force_rgb("k", ["sgray_8", "srgb_8"]) is False
+    assert client.negotiate_color_mode("k", ["monochrome", "color"], force_rgb=True) == "color"
+
+    # IPP media-col wire check for photo media types
+    pj_photo = build_print_job_request(
+        "ipps://172.20.80.5:631/ipp/print",
+        doc_format="application/pdf",
+        media="iso_a4_210x297mm",
+        color_mode="color",
+        media_type="photographic-glossy",
+    )
+    assert b"media-col" in pj_photo
+    assert b"photographic-glossy" in pj_photo
+
+    # API /purge/cmyk falls back to application/pdf when PWG-Raster fails
+    http_client = TestClient(app)
+    headers = {"x-api-key": settings.api_key} if settings.api_key else {}
+    et4810_status = PrinterStatus(
+        online=True,
+        state="idle",
+        make_and_model="EPSON ET-4810 Series",
+        printer_kind="inkjet",
+        head_technology="piezo",
+        supported_formats=["image/pwg-raster", "application/pdf", "image/jpeg"],
+        pwg_resolutions_supported=[300, 600],
+        pwg_document_types_supported=["srgb_8"],
+    )
+    attempted_formats = []
+
+    async def _mock_payload(payload, doc_format, mode, **kwargs):
+        attempted_formats.append(doc_format)
+        if doc_format == "image/pwg-raster":
+            return PurgeJobResult(PurgeJobStatus.ERROR, "Simulated PWG rejection")
+        return PurgeJobResult(PurgeJobStatus.ACCEPTED, f"Accepted {doc_format}")
+
+    with patch("src.main.printer_client.get_status", AsyncMock(return_value=et4810_status)), \
+         patch("src.main.printer_client.execute_purge_payload", side_effect=_mock_payload):
+        resp = http_client.post("/purge/cmyk", headers=headers)
+        assert resp.status_code == 200
+        assert attempted_formats == ["image/pwg-raster", "application/pdf"]
+
+
+@pytest.mark.asyncio
+async def test_et8550_six_tank_detection_generation_and_daemon(tmp_path):
+    from src.printer import _detect_ink_profile
+
+    markers_8550 = [
+        {"name": "MB", "level": 90, "type": "ink", "color": "#000000"},
+        {"name": "PB", "level": 85, "type": "ink", "color": "#000000"},
+        {"name": "C", "level": 80, "type": "ink", "color": "#00FFFF"},
+        {"name": "M", "level": 75, "type": "ink", "color": "#FF00FF"},
+        {"name": "Y", "level": 70, "type": "ink", "color": "#FFFF00"},
+        {"name": "GY", "level": 88, "type": "ink", "color": "#B3B3B3"},
+    ]
+    tanks, profile = _detect_ink_profile("EPSON ET-8550 Series", markers_8550)
+    assert tanks == 6
+    assert profile == "cmyk6"
+
+    gen = PatternGenerator(Settings(), assets_dir=tmp_path)
+    img6 = gen.build_purge_image("cmyk6")
+    assert img6.mode == "RGB"
+    img_pbgy = gen.build_purge_image("pb_gy")
+    assert img_pbgy.mode == "RGB"
+
+    # Surgical PB and GY channels work
+    pb_payload, _ = gen.compile_surgical_payload("pb", step=3, bursts=4)
+    gy_payload, _ = gen.compile_surgical_payload("gy", step=5, bursts=4)
+    assert pb_payload.startswith(PWG_MAGIC)
+    assert gy_payload.startswith(PWG_MAGIC)
+
+    # API /purge/cmyk6 and /purge/pb_gy negotiate photographic-glossy media-type when supported
+    http_client = TestClient(app)
+    headers = {"x-api-key": settings.api_key} if settings.api_key else {}
+    et8550_status = PrinterStatus(
+        online=True,
+        total_pages=120,
+        state="idle",
+        make_and_model="EPSON ET-8550 Series",
+        printer_kind="inkjet",
+        head_technology="piezo",
+        supported_formats=["application/pdf", "image/pwg-raster"],
+        media_types_supported=["stationery", "photographic-glossy", "photographic-matte"],
+        markers=markers_8550,
+        tank_count=6,
+        ink_profile="cmyk6",
+    )
+    captured = {}
+
+    async def _capture_payload(payload, doc_format, mode, **kwargs):
+        captured["mode"] = mode
+        captured["media_type"] = kwargs.get("media_type")
+        return PurgeJobResult(PurgeJobStatus.ACCEPTED, "ok")
+
+    with patch("src.main.printer_client.get_status", AsyncMock(return_value=et8550_status)), \
+         patch("src.main.printer_client.execute_purge_payload", side_effect=_capture_payload):
+        r6 = http_client.post("/purge/cmyk6", headers=headers)
+        assert r6.status_code == 200
+        r_pbgy = http_client.post("/purge/pb_gy", headers=headers)
+        assert r_pbgy.status_code == 200
+        assert captured["mode"] == "pb_gy"
+        assert captured["media_type"] == "photographic-glossy"
+
+        r_surg = http_client.post("/purge/surgical", json={"channel": "gy", "step": 2, "bursts": 4}, headers=headers)
+        assert r_surg.status_code == 200
+
+    # Daemon uses cmyk6 for full dormancy on 6-tank printers
+    d = NozzleGuardianDaemon(state_dir=str(tmp_path / "d6"), printer_host="192.168.1.85")
+    st = d.load_state()
+    st["auto_purge_enabled"] = True
+    st["last_total_pages"] = 120
+    st["last_total_activity"] = (datetime.now(timezone.utc) - timedelta(days=9)).isoformat()
+    d.save_state(st)
+
+    with patch.object(d.printer_client, "get_status", AsyncMock(return_value=et8550_status)), \
+         patch.object(d, "execute_purge", AsyncMock(return_value=PurgeJobResult(PurgeJobStatus.ACCEPTED, "ok"))) as mock_exec:
+        await d.evaluate_channels()
+        mock_exec.assert_awaited_once()
+        assert mock_exec.call_args[0][0] == "cmyk6"

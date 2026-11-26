@@ -71,8 +71,8 @@ async def cmd_check(args):
 async def cmd_purge(args):
     """Executes an immediate manual micro-purge for the selected channel."""
     mode = args.mode.lower()
-    if mode not in ("cmy", "k", "cmyk"):
-        print(f"❌ Invalid purge mode '{mode}'. Must be 'cmy', 'k', or 'cmyk'.")
+    if mode not in ("cmy", "k", "cmyk", "cmyk6", "pb_gy"):
+        print(f"❌ Invalid purge mode '{mode}'. Must be 'cmy', 'k', 'cmyk', 'cmyk6', or 'pb_gy'.")
         sys.exit(1)
         
     client = EpsonPrinterClient()
@@ -101,8 +101,8 @@ async def cmd_surgical(args):
     step = args.step
     bursts = args.bursts
     
-    if channel not in ("cyan", "magenta", "yellow", "black"):
-        print(f"❌ Invalid channel '{channel}'. Choose from 'cyan', 'magenta', 'yellow', 'black'.")
+    if channel not in ("cyan", "magenta", "yellow", "black", "bk", "pb", "photo_black", "gy", "gray"):
+        print(f"❌ Invalid channel '{channel}'. Choose from 'cyan', 'magenta', 'yellow', 'black', 'pb', 'gy'.")
         sys.exit(1)
         
     client = EpsonPrinterClient()
@@ -249,11 +249,11 @@ def main():
 
     # purge command
     p_purge = subparsers.add_parser("purge", help="Trigger a standard preventive micro-purge")
-    p_purge.add_argument("mode", choices=["cmy", "k", "cmyk"], help="Channel mode to purge ('cmy', 'k', or 'cmyk')")
+    p_purge.add_argument("mode", choices=["cmy", "k", "cmyk", "cmyk6", "pb_gy"], help="Channel mode to purge ('cmy', 'k', 'cmyk', 'cmyk6', or 'pb_gy')")
 
     # surgical command
     p_surg = subparsers.add_parser("surgical", help="Trigger a surgical single-nozzle acoustic resuscitation pass")
-    p_surg.add_argument("--channel", required=True, choices=["cyan", "magenta", "yellow", "black"], help="Target color channel")
+    p_surg.add_argument("--channel", required=True, choices=["cyan", "magenta", "yellow", "black", "bk", "pb", "photo_black", "gy", "gray"], help="Target color channel")
     p_surg.add_argument("--step", required=True, type=int, choices=range(1, 11), help="Target nozzle step number (1 to 10)")
     p_surg.add_argument("--bursts", type=int, default=5, choices=range(1, 10), help="Number of micro-burst acoustic lines (1-9)")
 

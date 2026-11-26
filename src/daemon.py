@@ -69,6 +69,9 @@ class NozzleGuardianDaemon:
                 port=state.get("printer_port", 631),
                 use_tls=state.get("printer_use_tls", True),
                 preferred_media=state.get("media_size", "auto"),
+                preferred_format=state.get("preferred_format", "auto"),
+                preferred_media_type=state.get("media_type", "auto"),
+                preferred_ink_profile=state.get("ink_profile", "auto"),
             )
 
     def load_state(self) -> Dict[str, Any]:
@@ -78,6 +81,10 @@ class NozzleGuardianDaemon:
             "printer_port": self.printer_client.port,
             "printer_use_tls": self.printer_client.use_tls,
             "media_size": self.printer_client.preferred_media,
+            "preferred_format": self.printer_client.preferred_format,
+            "media_type": self.printer_client.preferred_media_type,
+            "ink_profile": self.printer_client.preferred_ink_profile,
+            "tank_count": 4,
             "inactivity_threshold_days": self.default_inactivity_days,
             "last_mono_pages": None,
             "last_color_pages": None,
@@ -127,6 +134,9 @@ class NozzleGuardianDaemon:
         inactivity_threshold_days: Optional[int] = None,
         auto_purge_enabled: Optional[bool] = None,
         media_size: Optional[str] = None,
+        preferred_format: Optional[str] = None,
+        media_type: Optional[str] = None,
+        ink_profile: Optional[str] = None,
     ) -> Dict[str, Any]:
         state = self.load_state()
         if printer_host is not None:
@@ -141,18 +151,27 @@ class NozzleGuardianDaemon:
             state["auto_purge_enabled"] = bool(auto_purge_enabled)
         if media_size is not None:
             state["media_size"] = media_size
+        if preferred_format is not None:
+            state["preferred_format"] = preferred_format
+        if media_type is not None:
+            state["media_type"] = media_type
+        if ink_profile is not None:
+            state["ink_profile"] = ink_profile
 
         self.printer_client.configure(
             host=state["printer_host"],
             port=state["printer_port"],
             use_tls=state["printer_use_tls"],
             preferred_media=state["media_size"],
+            preferred_format=state.get("preferred_format", "auto"),
+            preferred_media_type=state.get("media_type", "auto"),
+            preferred_ink_profile=state.get("ink_profile", "auto"),
         )
         self.save_state(state)
         return state
 
     async def execute_purge(self, mode: str, status: Optional[PrinterStatus] = None) -> PurgeJobResult:
-        """Executes a preventive micro-purge negotiating the printer's exact format and media."""
+        """Executes a preventive micro-purge negotiating format, DPI, colorspace, and media."""
         st = status or await self.printer_client.get_status()
         if not st.online:
             return PurgeJobResult(status=PurgeJobStatus.ERROR, message=st.error_message or "Printer offline.")
@@ -167,16 +186,36 @@ class NozzleGuardianDaemon:
                 message="Paper tray empty (media-empty): insert scrap paper before purging.",
             )
 
-        doc_format = self.printer_client.negotiate_format(st.supported_formats)
-        gen = PatternGenerator(assets_dir=str(self.state_dir / "nozzle_assets"), dpi=self.dpi, media_name=st.media_default)
-        payload = await asyncio.to_thread(gen.compile_payload, mode, doc_format)
-        return await self.printer_client.execute_purge_payload(
-            payload=payload,
-            doc_format=doc_format,
-            mode=mode,
-            media=st.media_default,
-            endpoint_path=st.endpoint_path,
-        )
+        primary_fmt = self.printer_client.negotiate_format(st.supported_formats)
+        formats_to_try = [primary_fmt] + self.printer_client.get_fallback_formats(primary_fmt, st.supported_formats)
+        negotiated_dpi = self.printer_client.negotiate_pwg_dpi(st.pwg_resolutions_supported, preferred_dpi=self.dpi)
+        force_rgb = self.printer_client.negotiate_pwg_force_rgb(mode, st.pwg_document_types_supported)
+        color_mode = self.printer_client.negotiate_color_mode(mode, st.print_color_modes_supported, force_rgb=force_rgb)
+        media_type = self.printer_client.negotiate_media_type(mode, st.media_types_supported)
+        pwg_media_type = media_type or "Stationery"
+
+        gen = PatternGenerator(assets_dir=str(self.state_dir / "nozzle_assets"), dpi=negotiated_dpi, media_name=st.media_default)
+        last_res = PurgeJobResult(status=PurgeJobStatus.ERROR, message="No supported print format succeeded.")
+        for doc_format in formats_to_try:
+            payload = await asyncio.to_thread(
+                gen.compile_payload,
+                mode,
+                doc_format=doc_format,
+                force_rgb=(force_rgb if doc_format == "image/pwg-raster" else False),
+                media_type=pwg_media_type,
+            )
+            last_res = await self.printer_client.execute_purge_payload(
+                payload=payload,
+                doc_format=doc_format,
+                mode=mode,
+                media=st.media_default,
+                endpoint_path=st.endpoint_path,
+                color_mode_override=color_mode,
+                media_type=media_type,
+            )
+            if last_res.status != PurgeJobStatus.ERROR:
+                return last_res
+        return last_res
 
     async def _execute_purge(self, mode: str) -> bool:
         """Backward-compatible helper delegating to execute_purge and returning boolean."""
@@ -199,31 +238,49 @@ class NozzleGuardianDaemon:
         if st.is_media_empty:
             return {"accepted": False, "status": "rejected", "message": "Paper tray empty (media-empty).", "effective_bursts": 0}
 
-        doc_format = self.printer_client.negotiate_format(st.supported_formats)
-        gen = PatternGenerator(assets_dir=str(self.state_dir / "nozzle_assets"), dpi=self.dpi, media_name=st.media_default)
-        payload, effective_bursts = await asyncio.to_thread(
-            gen.compile_surgical_payload,
-            channel,
-            step,
-            bursts,
-            st.head_technology,
-            doc_format,
-        )
-        purge_mode = "k" if channel.lower().strip() in ("k", "black") else "color"
-        res = await self.printer_client.execute_purge_payload(
-            payload=payload,
-            doc_format=doc_format,
-            mode=purge_mode,
-            media=st.media_default,
-            endpoint_path=st.endpoint_path,
-        )
+        primary_fmt = self.printer_client.negotiate_format(st.supported_formats)
+        formats_to_try = [primary_fmt] + self.printer_client.get_fallback_formats(primary_fmt, st.supported_formats)
+        negotiated_dpi = self.printer_client.negotiate_pwg_dpi(st.pwg_resolutions_supported, preferred_dpi=self.dpi)
+        purge_mode = "k" if channel.lower().strip() in ("k", "bk", "black") else ("pb_gy" if channel.lower().strip() in ("pb", "photo_black", "photoblack", "gy", "gray", "grey") else "color")
+        force_rgb = self.printer_client.negotiate_pwg_force_rgb(purge_mode, st.pwg_document_types_supported)
+        color_mode = self.printer_client.negotiate_color_mode(purge_mode, st.print_color_modes_supported, force_rgb=force_rgb)
+        media_type = self.printer_client.negotiate_media_type(purge_mode, st.media_types_supported)
+        pwg_media_type = media_type or "Stationery"
+
+        gen = PatternGenerator(assets_dir=str(self.state_dir / "nozzle_assets"), dpi=negotiated_dpi, media_name=st.media_default)
+        res = PurgeJobResult(status=PurgeJobStatus.ERROR, message="No supported print format succeeded.")
+        used_format = primary_fmt
+        effective_bursts = bursts
+        for doc_format in formats_to_try:
+            used_format = doc_format
+            payload, effective_bursts = await asyncio.to_thread(
+                gen.compile_surgical_payload,
+                channel,
+                step,
+                bursts,
+                st.head_technology,
+                doc_format,
+                force_rgb=(force_rgb if doc_format == "image/pwg-raster" else False),
+                media_type=pwg_media_type,
+            )
+            res = await self.printer_client.execute_purge_payload(
+                payload=payload,
+                doc_format=doc_format,
+                mode=purge_mode,
+                media=st.media_default,
+                endpoint_path=st.endpoint_path,
+                color_mode_override=color_mode,
+                media_type=media_type,
+            )
+            if res.status != PurgeJobStatus.ERROR:
+                break
         return {
             "accepted": res.status == PurgeJobStatus.ACCEPTED,
             "status": res.status.value,
             "message": res.message,
             "effective_bursts": effective_bursts,
             "head_technology": st.head_technology,
-            "doc_format": doc_format,
+            "doc_format": used_format,
         }
 
     async def evaluate_channels(self) -> Dict[str, Any]:
@@ -239,6 +296,9 @@ class NozzleGuardianDaemon:
         state["last_model"] = status.make_and_model
         state["printer_kind"] = status.printer_kind
         state["head_technology"] = status.head_technology
+        state["tank_count"] = getattr(status, "tank_count", 4)
+        if state.get("ink_profile", "auto") == "auto":
+            state["detected_ink_profile"] = getattr(status, "ink_profile", "cmyk")
 
         if status.printer_kind == "laser":
             self.save_state(state)
@@ -316,8 +376,8 @@ class NozzleGuardianDaemon:
         purge_res: Optional[PurgeJobResult] = None
 
         if (mono_dormant and color_dormant) or total_dormant:
-            purge_mode = "cmyk"
-            purge_res = await _run_purge_step("cmyk")
+            purge_mode = "cmyk6" if getattr(status, "ink_profile", "cmyk") == "cmyk6" else "cmyk"
+            purge_res = await _run_purge_step(purge_mode)
             if purge_res.status == PurgeJobStatus.ACCEPTED:
                 state["last_total_activity"] = now.isoformat()
                 state["last_mono_activity"] = now.isoformat()

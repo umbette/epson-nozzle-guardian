@@ -33,9 +33,17 @@ def _resolve_dir(target_path: str, fallback_path: str) -> str:
         return str(fb)
 
 generator = PatternGenerator(assets_dir=_resolve_dir(get_app_assets_dir(), "assets"))
-printer_client = EpsonPrinterClient()
 notifier = Notifier(settings)
 daemon = NozzleGuardianDaemon(state_dir=_resolve_dir(get_app_data_dir(), "data"), alert_callback=notifier.send_alert)
+printer_client = EpsonPrinterClient(
+    host=daemon.printer_client.host,
+    port=daemon.printer_client.port,
+    use_tls=daemon.printer_client.use_tls,
+    preferred_media=daemon.printer_client.preferred_media,
+    preferred_format=daemon.printer_client.preferred_format,
+    preferred_media_type=daemon.printer_client.preferred_media_type,
+    preferred_ink_profile=daemon.printer_client.preferred_ink_profile,
+)
 
 
 @asynccontextmanager
@@ -66,17 +74,8 @@ app = FastAPI(
 )
 
 
-_FORMAT_PRIORITY = ("image/pwg-raster", "application/pdf", "image/png", "image/jpeg")
-
-
 def _select_doc_format(status: PrinterStatus) -> str:
-    supported = [f.lower() for f in (status.supported_formats or [])]
-    if not supported:
-        return "image/pwg-raster"
-    for fmt in _FORMAT_PRIORITY:
-        if fmt in supported:
-            return fmt
-    return "image/pwg-raster"
+    return printer_client.negotiate_format(status.supported_formats)
 
 
 def _assert_inkjet_ready(status: PrinterStatus) -> None:
@@ -114,10 +113,13 @@ class DaemonConfigRequest(BaseModel):
     inactivity_threshold_days: Optional[int] = None
     auto_purge_enabled: Optional[bool] = None
     media_size: Optional[str] = None
+    preferred_format: Optional[str] = None
+    media_type: Optional[str] = None
+    ink_profile: Optional[str] = None
 
 
 class SurgicalPurgeRequest(BaseModel):
-    channel: str = Field(..., description="Target color channel ('cyan', 'magenta', 'yellow', 'black')")
+    channel: str = Field(..., description="Target color channel ('cyan', 'magenta', 'yellow', 'black', 'pb'/'photo_black', 'gy'/'gray')")
     step: int = Field(..., ge=1, le=10, description="Target nozzle step number (1 to 10)")
     bursts: int = Field(default=5, ge=1, le=9, description="Number of acoustic micro-burst lines (1-9)")
 
@@ -182,13 +184,19 @@ async def update_daemon_config(req: DaemonConfigRequest, request: Request, x_api
         inactivity_threshold_days=req.inactivity_threshold_days,
         auto_purge_enabled=req.auto_purge_enabled,
         media_size=req.media_size,
+        preferred_format=req.preferred_format,
+        media_type=req.media_type,
+        ink_profile=req.ink_profile,
     )
-    if req.printer_host is not None:
+    if any(v is not None for v in (req.printer_host, req.printer_port, req.use_tls, req.media_size, req.preferred_format, req.media_type, req.ink_profile)):
         printer_client.configure(
             host=state["printer_host"],
             port=state["printer_port"],
             use_tls=state["printer_use_tls"],
             preferred_media=state["media_size"],
+            preferred_format=state.get("preferred_format", "auto"),
+            preferred_media_type=state.get("media_type", "auto"),
+            preferred_ink_profile=state.get("ink_profile", "auto"),
         )
     return {"status": "ok", "state": state}
 
@@ -273,8 +281,25 @@ async def trigger_surgical_purge(req: SurgicalPurgeRequest, request: Request, x_
     doc_format = _select_doc_format(status)
     media = getattr(status, "media_default", None) or "iso_a4_210x297mm"
     endpoint = getattr(status, "endpoint_path", None) or "/ipp/print"
+    ch_low = req.channel.lower().strip()
+    purge_mode = "k" if ch_low in ("k", "bk", "black") else ("pb_gy" if ch_low in ("pb", "photo_black", "photoblack", "gy", "gray", "grey") else "color")
+    negotiated_dpi = printer_client.negotiate_pwg_dpi(getattr(status, "pwg_resolutions_supported", None), preferred_dpi=generator.dpi)
+    force_rgb = printer_client.negotiate_pwg_force_rgb(purge_mode, getattr(status, "pwg_document_types_supported", None))
+    color_mode = printer_client.negotiate_color_mode(purge_mode, getattr(status, "print_color_modes_supported", None), force_rgb=force_rgb)
+    media_type = printer_client.negotiate_media_type(purge_mode, getattr(status, "media_types_supported", None))
+    pwg_media_type = media_type or "Stationery"
 
-    if doc_format == "image/pwg-raster":
+    use_default_pwg_path = (
+        doc_format == "image/pwg-raster"
+        and negotiated_dpi == generator.dpi
+        and media == generator.media_name
+        and not force_rgb
+        and not media_type
+        and ch_low in ("c", "cyan", "m", "magenta", "y", "yellow", "k", "black")
+    )
+
+    used_format = doc_format
+    if use_default_pwg_path:
         try:
             pwg_file = await asyncio.to_thread(generator.compile_surgical_pwg, req.channel, req.step, effective_bursts)
         except Exception as e:
@@ -283,14 +308,19 @@ async def trigger_surgical_purge(req: SurgicalPurgeRequest, request: Request, x_
 
         job_res = await printer_client.execute_purge_job(pwg_file, mode=f"surgical_{req.channel}_s{req.step}")
     else:
+        gen = generator if (negotiated_dpi == generator.dpi and media == generator.media_name) else PatternGenerator(
+            assets_dir=str(generator.assets_dir), dpi=negotiated_dpi, media_name=media
+        )
         try:
             payload, effective_bursts = await asyncio.to_thread(
-                generator.compile_surgical_payload,
+                gen.compile_surgical_payload,
                 req.channel,
                 req.step,
                 bursts=effective_bursts,
                 head_technology=head_tech,
                 doc_format=doc_format,
+                force_rgb=(force_rgb if doc_format == "image/pwg-raster" else False),
+                media_type=pwg_media_type,
             )
         except Exception as e:
             logger.error(f"Surgical pattern compilation failed: {e}")
@@ -302,7 +332,38 @@ async def trigger_surgical_purge(req: SurgicalPurgeRequest, request: Request, x_
             mode=f"surgical_{req.channel}_s{req.step}",
             media=media,
             endpoint_path=endpoint,
+            color_mode_override=color_mode,
+            media_type=media_type,
         )
+
+    if job_res.status == PurgeJobStatus.ERROR:
+        gen = generator if (negotiated_dpi == generator.dpi and media == generator.media_name) else PatternGenerator(
+            assets_dir=str(generator.assets_dir), dpi=negotiated_dpi, media_name=media
+        )
+        for fb_fmt in printer_client.get_fallback_formats(doc_format, getattr(status, "supported_formats", None)):
+            logger.info(f"Retrying surgical purge with fallback format: {fb_fmt}")
+            fb_payload, effective_bursts = await asyncio.to_thread(
+                gen.compile_surgical_payload,
+                req.channel,
+                req.step,
+                bursts=effective_bursts,
+                head_technology=head_tech,
+                doc_format=fb_fmt,
+                force_rgb=False,
+                media_type=pwg_media_type,
+            )
+            job_res = await printer_client.execute_purge_payload(
+                payload=fb_payload,
+                doc_format=fb_fmt,
+                mode=f"surgical_{req.channel}_s{req.step}",
+                media=media,
+                endpoint_path=endpoint,
+                color_mode_override=color_mode,
+                media_type=media_type,
+            )
+            used_format = fb_fmt
+            if job_res.status != PurgeJobStatus.ERROR:
+                break
 
     if job_res.status == PurgeJobStatus.BUSY:
         raise HTTPException(status_code=409, detail="A purge print job is already in progress.")
@@ -312,7 +373,7 @@ async def trigger_surgical_purge(req: SurgicalPurgeRequest, request: Request, x_
     return PurgeResponse(
         success=True,
         mode=f"surgical_{req.channel}_{req.step}",
-        message=f"Targeted acoustic resuscitation pass dispatched for {req.channel.upper()} nozzle step #{req.step} ({effective_bursts} micro-bursts, {doc_format})."
+        message=f"Targeted acoustic resuscitation pass dispatched for {req.channel.upper()} nozzle step #{req.step} ({effective_bursts} micro-bursts, {used_format})."
     )
 
 
@@ -321,8 +382,8 @@ async def trigger_purge(mode: str, request: Request, x_api_key: Optional[str] = 
     _verify_api_key(x_api_key, request)
 
     mode = mode.lower()
-    if mode not in ("cmy", "k", "cmyk"):
-        raise HTTPException(status_code=400, detail="Invalid purge mode. Must be 'cmy', 'k', or 'cmyk'.")
+    if mode not in ("cmy", "k", "cmyk", "cmyk6", "pb_gy"):
+        raise HTTPException(status_code=400, detail="Invalid purge mode. Must be 'cmy', 'k', 'cmyk', 'cmyk6', or 'pb_gy'.")
 
     if printer_client.is_busy:
         raise HTTPException(status_code=409, detail="A purge print job is already in progress.")
@@ -333,8 +394,22 @@ async def trigger_purge(mode: str, request: Request, x_api_key: Optional[str] = 
     doc_format = _select_doc_format(status)
     media = getattr(status, "media_default", None) or "iso_a4_210x297mm"
     endpoint = getattr(status, "endpoint_path", None) or "/ipp/print"
+    negotiated_dpi = printer_client.negotiate_pwg_dpi(getattr(status, "pwg_resolutions_supported", None), preferred_dpi=generator.dpi)
+    force_rgb = printer_client.negotiate_pwg_force_rgb(mode, getattr(status, "pwg_document_types_supported", None))
+    color_mode = printer_client.negotiate_color_mode(mode, getattr(status, "print_color_modes_supported", None), force_rgb=force_rgb)
+    media_type = printer_client.negotiate_media_type(mode, getattr(status, "media_types_supported", None))
+    pwg_media_type = media_type or "Stationery"
 
-    if doc_format == "image/pwg-raster":
+    use_default_pwg_path = (
+        doc_format == "image/pwg-raster"
+        and negotiated_dpi == generator.dpi
+        and media == generator.media_name
+        and not force_rgb
+        and not media_type
+        and mode in ("cmy", "k", "cmyk")
+    )
+
+    if use_default_pwg_path:
         pwg_file = generator.get_pwg_path(mode)
         if not pwg_file.exists():
             logger.info(f"Compiling missing pattern for mode: {mode}")
@@ -343,25 +418,55 @@ async def trigger_purge(mode: str, request: Request, x_api_key: Optional[str] = 
         job_res = await printer_client.execute_purge_job(pwg_file, mode=mode)
         if job_res.status == PurgeJobStatus.BUSY:
             raise HTTPException(status_code=409, detail="A purge print job is already in progress.")
-
-        if job_res.status == PurgeJobStatus.ERROR:
-            png_file = generator.get_png_path(mode)
-            if png_file.exists() and pwg_file.suffix == ".pwg":
-                logger.info("Retrying with raw PNG format fallback...")
-                job_res = await printer_client.execute_purge_job(png_file, mode=mode)
-                if job_res.status == PurgeJobStatus.BUSY:
-                    raise HTTPException(status_code=409, detail="A purge print job is already in progress.")
     else:
-        payload = await asyncio.to_thread(generator.compile_payload, mode, doc_format=doc_format)
+        gen = generator if (negotiated_dpi == generator.dpi and media == generator.media_name) else PatternGenerator(
+            assets_dir=str(generator.assets_dir), dpi=negotiated_dpi, media_name=media
+        )
+        payload = await asyncio.to_thread(
+            gen.compile_payload,
+            mode,
+            doc_format=doc_format,
+            force_rgb=(force_rgb if doc_format == "image/pwg-raster" else False),
+            media_type=pwg_media_type,
+        )
         job_res = await printer_client.execute_purge_payload(
             payload=payload,
             doc_format=doc_format,
             mode=mode,
             media=media,
             endpoint_path=endpoint,
+            color_mode_override=color_mode,
+            media_type=media_type,
         )
         if job_res.status == PurgeJobStatus.BUSY:
             raise HTTPException(status_code=409, detail="A purge print job is already in progress.")
+
+    if job_res.status == PurgeJobStatus.ERROR:
+        gen = generator if (negotiated_dpi == generator.dpi and media == generator.media_name) else PatternGenerator(
+            assets_dir=str(generator.assets_dir), dpi=negotiated_dpi, media_name=media
+        )
+        for fb_fmt in printer_client.get_fallback_formats(doc_format, getattr(status, "supported_formats", None)):
+            logger.info(f"Retrying purge '{mode}' with supported fallback format: {fb_fmt}")
+            fb_payload = await asyncio.to_thread(
+                gen.compile_payload,
+                mode,
+                doc_format=fb_fmt,
+                force_rgb=False,
+                media_type=pwg_media_type,
+            )
+            job_res = await printer_client.execute_purge_payload(
+                payload=fb_payload,
+                doc_format=fb_fmt,
+                mode=mode,
+                media=media,
+                endpoint_path=endpoint,
+                color_mode_override=color_mode,
+                media_type=media_type,
+            )
+            if job_res.status == PurgeJobStatus.BUSY:
+                raise HTTPException(status_code=409, detail="A purge print job is already in progress.")
+            if job_res.status != PurgeJobStatus.ERROR:
+                break
 
     if job_res.status != PurgeJobStatus.ACCEPTED:
         raise HTTPException(status_code=500, detail=f"IPP print job execution failed: {job_res.message}")
@@ -481,7 +586,7 @@ HTML_DASHBOARD_TEMPLATE = """<!DOCTYPE html>
     button.btn-scan { background: #8b5cf6; }
     
     /* Interactive Nozzle Matrix */
-    .matrix-container { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 16px; }
+    .matrix-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; margin-top: 16px; }
     .channel-col { background: #0f172a; padding: 12px; border-radius: 8px; border: 1px solid var(--card-border); text-align: center; }
     .channel-header { font-weight: 800; font-size: 0.85rem; margin-bottom: 8px; }
     .step-list { display: flex; flex-direction: column; gap: 4px; }
@@ -505,6 +610,7 @@ HTML_DASHBOARD_TEMPLATE = """<!DOCTYPE html>
         <div class="card-title">Stato Telemetria Hardware</div>
         <div id="printerModel" style="font-weight: 600; margin-bottom: 4px;">Connessione in corso...</div>
         <div id="printerMeta" style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 8px;">Tecnologia: - | Formato: -</div>
+        <div id="markersBar" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;"></div>
         <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px;">
           Pagine B/N: <strong id="pagesMono">-</strong> | Pagine Colori: <strong id="pagesColor">-</strong> | Totali: <strong id="pagesTotal">-</strong>
         </div>
@@ -515,12 +621,36 @@ HTML_DASHBOARD_TEMPLATE = """<!DOCTYPE html>
           <button class="btn-k" onclick="triggerPurge('k')">Solo Nero (K)</button>
           <button style="background:#334155;" onclick="discoverPrintersUi()">🔎 Scopri LAN/USB</button>
         </div>
+        <div id="photo6PurgeGroup" class="btn-group" style="display:none;">
+          <button style="background:#0f766e;" onclick="triggerPurge('cmyk6')">🎨 6-Tank Photo (CMY+BK+PB+GY)</button>
+          <button style="background:#475569;" onclick="triggerPurge('pb_gy')">🖤 Photo Black + Gray (PB+GY)</button>
+        </div>
         <div id="discoverList" style="margin-top:10px; font-size:0.8rem; color:var(--text-muted); display:none;"></div>
         <div style="display:flex; gap:6px; margin-top:10px; flex-wrap:wrap; align-items:center;">
           <input id="cfgHost" type="text" placeholder="IP / hostname stampante" style="flex:1; min-width:140px; padding:7px 10px; border-radius:6px; border:1px solid var(--card-border); background:#0f172a; color:var(--text); font-size:0.8rem;">
           <input id="cfgPort" type="number" value="631" style="width:72px; padding:7px 8px; border-radius:6px; border:1px solid var(--card-border); background:#0f172a; color:var(--text); font-size:0.8rem;">
           <button style="background:#334155; padding:7px 12px; font-size:0.8rem;" onclick="savePrinterCfg()">Salva IP</button>
           <button style="background:#0284c7; padding:7px 12px; font-size:0.8rem;" onclick="runSmartCheck()">⏱️ Check Inattività</button>
+        </div>
+        <div style="display:flex; gap:6px; margin-top:8px; flex-wrap:wrap; align-items:center; font-size:0.78rem;">
+          <select id="cfgFormat" onchange="saveAdvancedCfg()" title="Formato IPP" style="padding:5px 8px; border-radius:6px; border:1px solid var(--card-border); background:#0f172a; color:var(--text);">
+            <option value="auto">Formato: Auto</option>
+            <option value="image/pwg-raster">PWG-Raster</option>
+            <option value="application/pdf">PDF (Fallback)</option>
+            <option value="image/jpeg">JPEG</option>
+            <option value="image/png">PNG</option>
+          </select>
+          <select id="cfgMediaType" onchange="saveAdvancedCfg()" title="Tipo Carta IPP" style="padding:5px 8px; border-radius:6px; border:1px solid var(--card-border); background:#0f172a; color:var(--text);">
+            <option value="auto">Carta: Auto (Plain/BK)</option>
+            <option value="stationery">Plain Paper (BK)</option>
+            <option value="photographic-glossy">Photo Glossy (PB+GY)</option>
+            <option value="photographic-matte">Photo Matte (PB+GY)</option>
+          </select>
+          <select id="cfgInkProfile" onchange="saveAdvancedCfg()" title="Profilo Serbatoi" style="padding:5px 8px; border-radius:6px; border:1px solid var(--card-border); background:#0f172a; color:var(--text);">
+            <option value="auto">Serbatoi: Auto</option>
+            <option value="cmyk">4-Tank (CMYK)</option>
+            <option value="cmyk6">6-Tank Photo (CMY+BK+PB+GY)</option>
+          </select>
         </div>
         <div style="display:flex; gap:14px; margin-top:10px; flex-wrap:wrap; font-size:0.78rem; color:var(--text-muted);">
           <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
@@ -569,8 +699,18 @@ HTML_DASHBOARD_TEMPLATE = """<!DOCTYPE html>
         </div>
         <!-- Black -->
         <div class="channel-col" style="border-top: 3px solid var(--black);">
-          <div class="channel-header" style="color: #cbd5e1;">NERO (K)</div>
+          <div class="channel-header" style="color: #cbd5e1;">NERO (K/BK)</div>
           <div class="step-list" id="col-black"></div>
+        </div>
+        <!-- Photo Black (6-tank) -->
+        <div class="channel-col photo6-col" style="border-top: 3px solid #94a3b8; display:none;">
+          <div class="channel-header" style="color: #e2e8f0;">PHOTO BK (PB)</div>
+          <div class="step-list" id="col-photo_black"></div>
+        </div>
+        <!-- Gray (6-tank) -->
+        <div class="channel-col photo6-col" style="border-top: 3px solid #64748b; display:none;">
+          <div class="channel-header" style="color: #94a3b8;">GRAY (GY)</div>
+          <div class="step-list" id="col-gray"></div>
         </div>
       </div>
 
@@ -617,8 +757,23 @@ HTML_DASHBOARD_TEMPLATE = """<!DOCTYPE html>
           badge.innerText = '🔴 Offline';
         }
         document.getElementById('printerModel').innerText = data.make_and_model || 'Stampante IPP';
+        const pwgRes = (data.pwg_resolutions_supported || []).length ? ` | PWG DPI: ${data.pwg_resolutions_supported.join(',')}` : '';
+        const tankInfo = (data.ink_profile === 'cmyk6' || (data.tank_count || 4) >= 6) ? ' | 6-Tank Photo' : '';
         document.getElementById('printerMeta').innerText =
-          `Tecnologia: ${(data.printer_kind || 'inkjet').toUpperCase()} (${data.head_technology || 'piezo'}) | Carta: ${data.media_default || 'iso_a4_210x297mm'}`;
+          `Tecnologia: ${(data.printer_kind || 'inkjet').toUpperCase()} (${data.head_technology || 'piezo'}) | Carta: ${data.media_default || 'iso_a4_210x297mm'}${pwgRes}${tankInfo}`;
+        const mBar = document.getElementById('markersBar');
+        if (mBar) {
+          const mk = data.markers || [];
+          mBar.innerHTML = mk.map(m => {
+            const col = m.color || '#94a3b8';
+            const lvl = (m.level !== null && m.level !== undefined && m.level >= 0) ? `${m.level}%` : '?';
+            return `<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;background:#0f172a;border:1px solid #334155;font-size:0.72rem;"><span style="width:8px;height:8px;border-radius:50%;background:${col};display:inline-block;"></span>${m.name}: <strong>${lvl}</strong></span>`;
+          }).join('');
+        }
+        const isSixTank = data.ink_profile === 'cmyk6' || (data.tank_count || 4) >= 6;
+        const p6Group = document.getElementById('photo6PurgeGroup');
+        if (p6Group) p6Group.style.display = isSixTank ? 'flex' : 'none';
+        document.querySelectorAll('.photo6-col').forEach(el => { el.style.display = isSixTank ? 'block' : 'none'; });
         document.getElementById('pagesMono').innerText = data.monochrome_pages ?? 'N/D';
         document.getElementById('pagesColor').innerText = data.color_pages ?? 'N/D';
         document.getElementById('pagesTotal').innerText = data.total_pages ?? 'N/D';
@@ -628,9 +783,15 @@ HTML_DASHBOARD_TEMPLATE = """<!DOCTYPE html>
           const hEl = document.getElementById('cfgHost');
           const pEl = document.getElementById('cfgPort');
           const aEl = document.getElementById('chkAutoPurge');
+          const fEl = document.getElementById('cfgFormat');
+          const mtEl = document.getElementById('cfgMediaType');
+          const ipEl = document.getElementById('cfgInkProfile');
           if (hEl && !hEl.value && stData.printer_host) hEl.value = stData.printer_host;
           if (pEl && stData.printer_port) pEl.value = stData.printer_port;
           if (aEl) aEl.checked = Boolean(stData.auto_purge_enabled);
+          if (fEl && stData.preferred_format) fEl.value = stData.preferred_format;
+          if (mtEl && stData.media_type) mtEl.value = stData.media_type;
+          if (ipEl && stData.ink_profile) ipEl.value = stData.ink_profile;
         }
         const asRes = await fetch('./daemon/autostart', { headers: authHeaders() });
         if (asRes.ok) {
@@ -660,6 +821,21 @@ HTML_DASHBOARD_TEMPLATE = """<!DOCTYPE html>
       });
       if (res.ok) showToast(enabled ? '🚀 Avvio automatico con il PC attivato!' : 'ℹ️ Avvio automatico disattivato.');
       else showToast('⚠️ Avvio automatico non disponibile su questo ambiente.');
+    }
+
+    async function saveAdvancedCfg() {
+      const preferred_format = document.getElementById('cfgFormat').value;
+      const media_type = document.getElementById('cfgMediaType').value;
+      const ink_profile = document.getElementById('cfgInkProfile').value;
+      const res = await fetch('./daemon/config', {
+        method: 'POST',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ preferred_format, media_type, ink_profile })
+      });
+      if (res.ok) {
+        showToast('✅ Impostazioni IPP/Serbatoi salvate!');
+        loadStatus();
+      }
     }
 
     async function savePrinterCfg() {
@@ -716,9 +892,10 @@ HTML_DASHBOARD_TEMPLATE = """<!DOCTYPE html>
     }
 
     function initMatrix() {
-      const channels = ['cyan', 'magenta', 'yellow', 'black'];
+      const channels = ['cyan', 'magenta', 'yellow', 'black', 'photo_black', 'gray'];
       channels.forEach(ch => {
         const col = document.getElementById('col-' + ch);
+        if (!col) return;
         col.innerHTML = '';
         for (let i = 1; i <= 10; i++) {
           const btn = document.createElement('button');

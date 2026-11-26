@@ -7,7 +7,7 @@ streams directly from Pillow images without requiring CUPS, cupsfilter, or Ghost
 
 import io
 import struct
-from typing import Tuple
+from typing import Optional, Tuple
 from PIL import Image
 
 PWG_MAGIC = b"RaS2"
@@ -19,6 +19,22 @@ MEDIA_DIMENSIONS_MM = {
     "iso_a4_210x297mm": (210.0, 297.0, 595, 842),
     "na_letter_8.5x11in": (215.9, 279.4, 612, 792),
 }
+
+PWG_MEDIA_TYPE_MAP = {
+    "auto": "Stationery",
+    "stationery": "Stationery",
+    "photographic": "Photographic",
+    "photographic-glossy": "PhotographicGlossy",
+    "photographic-matte": "PhotographicMatte",
+    "photographic-semi-gloss": "PhotographicSemiGloss",
+}
+
+
+def _pwg_media_type_name(media_type: Optional[str]) -> str:
+    if not media_type:
+        return "Stationery"
+    key = media_type.lower().strip()
+    return PWG_MEDIA_TYPE_MAP.get(key, media_type.strip()[:63] or "Stationery")
 
 
 def _pack_cstr(text: str, length: int = 64) -> bytes:
@@ -81,6 +97,7 @@ def encode_pwg_raster(
     img: Image.Image,
     dpi: int = 300,
     media_name: str = "iso_a4_210x297mm",
+    media_type: str = "Stationery",
 ) -> bytes:
     """
     Encodes a Pillow Image ('L' grayscale or 'RGB') into a spec-compliant
@@ -104,7 +121,7 @@ def encode_pwg_raster(
 
     header = bytearray(PWG_HEADER_SIZE)
     header[0:64] = _pack_cstr("PwgRaster", 64)
-    header[128:192] = _pack_cstr("Stationery", 64)
+    header[128:192] = _pack_cstr(_pwg_media_type_name(media_type), 64)
 
     struct.pack_into(">2I", header, 276, dpi, dpi)
     struct.pack_into(">I", header, 340, 1)
@@ -122,7 +139,7 @@ def encode_pwg_raster(
     struct.pack_into(">I", header, 460, 1)
     struct.pack_into(">I", header, 480, 0x00FFFFFF)
 
-    header[1720:1784] = _pack_cstr(media_name, 64)
+    header[1732:1796] = _pack_cstr(media_name, 64)
 
     out = bytearray(PWG_MAGIC)
     out.extend(header)
@@ -163,6 +180,8 @@ def decode_pwg_raster(data: bytes) -> Tuple[dict, bytes]:
 
     meta = {
         "media_class": hdr[0:64].split(b"\x00", 1)[0].decode("ascii", errors="ignore"),
+        "media_type": hdr[128:192].split(b"\x00", 1)[0].decode("ascii", errors="ignore"),
+        "media_size_name": hdr[1732:1796].split(b"\x00", 1)[0].decode("ascii", errors="ignore"),
         "dpi": (dpi_x, dpi_y),
         "width": width,
         "height": height,
@@ -203,11 +222,12 @@ def encode_image_for_format(
     mime_format: str,
     dpi: int = 300,
     media_name: str = "iso_a4_210x297mm",
+    media_type: str = "Stationery",
 ) -> bytes:
     """Encodes a Pillow Image into the negotiated IPP document format."""
     fmt = mime_format.lower().strip()
     if fmt == "image/pwg-raster":
-        return encode_pwg_raster(img, dpi=dpi, media_name=media_name)
+        return encode_pwg_raster(img, dpi=dpi, media_name=media_name, media_type=media_type)
 
     buf = io.BytesIO()
     if fmt == "application/pdf":

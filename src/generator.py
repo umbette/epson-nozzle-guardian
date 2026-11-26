@@ -24,8 +24,29 @@ COLOR_CYAN = (0, 255, 255)
 COLOR_MAGENTA = (255, 0, 255)
 COLOR_YELLOW = (255, 255, 0)
 COLOR_BLACK = (0, 0, 0)
+COLOR_PHOTO_BLACK = (8, 8, 8)
+COLOR_GRAY = (128, 128, 128)
+COLOR_LIGHT_GRAY = (182, 182, 182)
 COLOR_WHITE = (255, 255, 255)
 COLOR_TEXT_NEUTRAL = (55, 55, 55)
+
+SURGICAL_CHANNEL_MAP = {
+    "c": "cyan",
+    "cyan": "cyan",
+    "m": "magenta",
+    "magenta": "magenta",
+    "y": "yellow",
+    "yellow": "yellow",
+    "k": "black",
+    "bk": "black",
+    "black": "black",
+    "pb": "photo_black",
+    "photo_black": "photo_black",
+    "photoblack": "photo_black",
+    "gy": "gray",
+    "gray": "gray",
+    "grey": "gray",
+}
 
 
 class PatternGenerator:
@@ -168,44 +189,49 @@ class PatternGenerator:
         bars_h = num_stripes * (self.stripe_height_px + self.stripe_spacing_px)
         return self.top_margin_px + self._mm(6.5) + bars_h + self._mm(5.5)
 
-    def build_purge_image(self, mode: str) -> Image.Image:
-        """Builds an in-memory Pillow Image ('L' for 'k', 'RGB' for 'cmy'/'cmyk')."""
+    def build_purge_image(self, mode: str, force_rgb: bool = False) -> Image.Image:
+        """Builds an in-memory Pillow Image ('L' for 'k' unless force_rgb=True, 'RGB' for color/6-tank)."""
         mode_l = mode.lower().strip()
+        if mode_l == "photo6":
+            mode_l = "cmyk6"
         font_title = self._font(3.0, bold=True)
         font_badge = self._font(2.4, bold=True)
         col_h_px = self._mm(18.0)
 
         if mode_l == "k":
-            img = Image.new("L", (self.width_px, self.height_px), 255)
+            img_mode = "RGB" if force_rgb else "L"
+            bg = COLOR_WHITE if force_rgb else 255
+            fg = COLOR_BLACK if force_rgb else 0
+            img = Image.new(img_mode, (self.width_px, self.height_px), bg)
             draw = ImageDraw.Draw(img)
             x0 = self.side_margin_px
             x1 = x0 + self.stripe_width_px
 
             y_cursor = self.top_margin_px
-            draw.text((x0 + self._mm(5.0), y_cursor), "NOZZLE GUARDIAN — TEST NERO (K) [1-10]", fill=0, font=font_title)
+            draw.text((x0 + self._mm(5.0), y_cursor), "NOZZLE GUARDIAN — TEST NERO (K) [1-10]", fill=fg, font=font_title)
             y_cursor += self._mm(6.5)
 
             badge_w = self._mm(6.0)
-            draw.text((x0, y_cursor + self._mm(0.2)), "K", fill=0, font=font_badge)
-            draw.rectangle([x0 + badge_w, y_cursor, x1, y_cursor + self.stripe_height_px], fill=0)
+            draw.text((x0, y_cursor + self._mm(0.2)), "K", fill=fg, font=font_badge)
+            draw.rectangle([x0 + badge_w, y_cursor, x1, y_cursor + self.stripe_height_px], fill=fg)
 
             ladder_y0 = self._compute_ladder_y(1)
             ruler_w = self._mm(7.0)
             fid_sz = max(8, self._mm(2.8))
-            self._draw_fiducial(draw, x0, ladder_y0, 0)
-            self._draw_fiducial(draw, x1 - fid_sz, ladder_y0, 0)
-            self._draw_fiducial(draw, x0, ladder_y0 + col_h_px - fid_sz, 0)
-            self._draw_fiducial(draw, x1 - fid_sz, ladder_y0 + col_h_px - fid_sz, 0)
-            self._draw_ruler_labels(draw, x0 + self._mm(5.8), ladder_y0, col_h_px, color=0, align_right=True)
-            self._draw_ruler_labels(draw, x1 - self._mm(5.8), ladder_y0, col_h_px, color=0, align_right=False)
+            self._draw_fiducial(draw, x0, ladder_y0, fg)
+            self._draw_fiducial(draw, x1 - fid_sz, ladder_y0, fg)
+            self._draw_fiducial(draw, x0, ladder_y0 + col_h_px - fid_sz, fg)
+            self._draw_fiducial(draw, x1 - fid_sz, ladder_y0 + col_h_px - fid_sz, fg)
+            self._draw_ruler_labels(draw, x0 + self._mm(5.8), ladder_y0, col_h_px, color=fg, align_right=True)
+            self._draw_ruler_labels(draw, x1 - self._mm(5.8), ladder_y0, col_h_px, color=fg, align_right=False)
             self._draw_ladder_pattern(
                 draw,
                 x0 + ruler_w,
                 ladder_y0,
                 self.stripe_width_px - (2 * ruler_w),
                 col_h_px,
-                color=0,
-                diag_label_color=0,
+                color=fg,
+                diag_label_color=fg,
             )
             return img
 
@@ -215,6 +241,7 @@ class PatternGenerator:
                 ("M", "MAGENTA", COLOR_MAGENTA),
                 ("Y", "YELLOW", COLOR_YELLOW),
             ]
+            mode_tag = "CMY"
             include_black = False
         elif mode_l == "cmyk":
             colors_to_draw = [
@@ -223,6 +250,26 @@ class PatternGenerator:
                 ("Y", "YELLOW", COLOR_YELLOW),
                 ("K", "BLACK", COLOR_BLACK),
             ]
+            mode_tag = "CMYK"
+            include_black = True
+        elif mode_l == "cmyk6":
+            colors_to_draw = [
+                ("C", "CYAN", COLOR_CYAN),
+                ("M", "MAGENTA", COLOR_MAGENTA),
+                ("Y", "YELLOW", COLOR_YELLOW),
+                ("BK", "PIGMENT BK", COLOR_BLACK),
+                ("PB", "PHOTO BK", COLOR_PHOTO_BLACK),
+                ("GY", "GRAY", COLOR_GRAY),
+            ]
+            mode_tag = "6-TANK CLARIA (CMY+BK+PB+GY)"
+            include_black = True
+        elif mode_l == "pb_gy":
+            colors_to_draw = [
+                ("PB", "PHOTO BLACK", COLOR_PHOTO_BLACK),
+                ("GY", "GRAY 50%", COLOR_GRAY),
+                ("LG", "GRAY 28%", COLOR_LIGHT_GRAY),
+            ]
+            mode_tag = "PHOTO BLACK & GRAY"
             include_black = True
         else:
             raise ValueError(f"Unknown purge mode: {mode}")
@@ -235,7 +282,6 @@ class PatternGenerator:
         fid_color = COLOR_BLACK if include_black else COLOR_MAGENTA
 
         y_cursor = self.top_margin_px
-        mode_tag = "CMYK" if include_black else "CMY"
         draw.text(
             (x0 + self._mm(5.0), y_cursor),
             f"NOZZLE GUARDIAN — {mode_tag} MATRIX [1-10]",
@@ -244,11 +290,11 @@ class PatternGenerator:
         )
         y_cursor += self._mm(6.5)
 
-        badge_w = self._mm(6.0)
+        badge_w = self._mm(7.5 if len(colors_to_draw) >= 5 or mode_l == "pb_gy" else 6.0)
         for short_code, _name, color in colors_to_draw:
             y0 = y_cursor
             y1 = y0 + self.stripe_height_px
-            badge_fill = COLOR_TEXT_NEUTRAL if (include_black and short_code == "Y") else color
+            badge_fill = COLOR_TEXT_NEUTRAL if (include_black and short_code in ("Y", "LG")) else color
             draw.text((x0, y0 + self._mm(0.2)), short_code, fill=badge_fill, font=font_badge)
             draw.rectangle([x0 + badge_w, y0, x1, y1], fill=color)
             y_cursor = y1 + self.stripe_spacing_px
@@ -263,8 +309,9 @@ class PatternGenerator:
         matrix_x0 = x0 + badge_w
         matrix_w = self.stripe_width_px - badge_w - fid_sz - self._mm(1.5)
         num_cols = len(colors_to_draw)
-        gap_px = self._mm(4.0)
+        gap_px = self._mm(2.8 if num_cols >= 6 else 4.0)
         col_w_px = int((matrix_w - (num_cols - 1) * gap_px) / num_cols)
+        footer_font = self._font(1.8 if num_cols >= 6 else 2.4, bold=True)
 
         for i, (short_code, _name, color) in enumerate(colors_to_draw):
             col_x = matrix_x0 + i * (col_w_px + gap_px)
@@ -285,8 +332,9 @@ class PatternGenerator:
         footer_y = ladder_y0 + col_h_px + self._mm(5.5)
         for i, (short_code, name, color) in enumerate(colors_to_draw):
             col_x = matrix_x0 + i * (col_w_px + gap_px)
-            lbl_color = COLOR_TEXT_NEUTRAL if (include_black and short_code == "Y") else (COLOR_BLACK if include_black else color)
-            draw.text((col_x, footer_y), f"[{short_code}] {name} 1-10", fill=lbl_color, font=font_badge)
+            lbl_color = COLOR_TEXT_NEUTRAL if (include_black and short_code in ("Y", "LG")) else (COLOR_BLACK if include_black else color)
+            lbl_text = f"[{short_code}] 1-10" if num_cols >= 6 else f"[{short_code}] {name} 1-10"
+            draw.text((col_x, footer_y), lbl_text, fill=lbl_color, font=footer_font)
 
         return img
 
@@ -296,13 +344,13 @@ class PatternGenerator:
         step: int,
         bursts: int = 5,
         head_technology: str = "piezo",
+        force_rgb: bool = False,
     ) -> Tuple[Image.Image, str, int]:
         """Builds a surgical single-nozzle pass enforcing thermal BubbleJet protection."""
         ch = channel.lower().strip()
-        channel_map = {"c": "cyan", "cyan": "cyan", "m": "magenta", "magenta": "magenta", "y": "yellow", "yellow": "yellow", "k": "black", "black": "black"}
-        if ch not in channel_map:
+        if ch not in SURGICAL_CHANNEL_MAP:
             raise ValueError(f"Invalid channel '{channel}'")
-        canon = channel_map[ch]
+        canon = SURGICAL_CHANNEL_MAP[ch]
 
         step = max(1, min(10, int(step)))
         raw_bursts = max(1, min(9, int(bursts)))
@@ -319,7 +367,7 @@ class PatternGenerator:
         x1 = x0 + self.stripe_width_px
         font_hdr = self._font(2.5, bold=True)
 
-        if canon == "black":
+        if canon == "black" and not force_rgb:
             img = Image.new("L", (self.width_px, self.height_px), 255)
             draw = ImageDraw.Draw(img)
             draw.text((x0, max(10, target_y - self._mm(5.5))), f"[NOZZLE GUARDIAN - SURGICAL BLACK #{step}]", fill=0, font=font_hdr)
@@ -328,7 +376,14 @@ class PatternGenerator:
                 draw.line([(x0, ly), (x1, ly)], fill=0, width=max(2, self._mm(0.25)))
             return img, "Gray", effective_bursts
 
-        color_lookup = {"cyan": COLOR_CYAN, "magenta": COLOR_MAGENTA, "yellow": COLOR_YELLOW}
+        color_lookup = {
+            "cyan": COLOR_CYAN,
+            "magenta": COLOR_MAGENTA,
+            "yellow": COLOR_YELLOW,
+            "black": COLOR_BLACK,
+            "photo_black": COLOR_PHOTO_BLACK,
+            "gray": COLOR_GRAY,
+        }
         color = color_lookup[canon]
 
         img = Image.new("RGB", (self.width_px, self.height_px), COLOR_WHITE)
@@ -339,9 +394,21 @@ class PatternGenerator:
             draw.line([(x0, ly), (x1, ly)], fill=color, width=max(2, self._mm(0.25)))
         return img, "RGB", effective_bursts
 
-    def compile_payload(self, mode: str, doc_format: str = "image/pwg-raster") -> bytes:
-        img = self.build_purge_image(mode)
-        return encode_image_for_format(img, mime_format=doc_format, dpi=self.dpi, media_name=self.media_name)
+    def compile_payload(
+        self,
+        mode: str,
+        doc_format: str = "image/pwg-raster",
+        force_rgb: bool = False,
+        media_type: str = "Stationery",
+    ) -> bytes:
+        img = self.build_purge_image(mode, force_rgb=force_rgb)
+        return encode_image_for_format(
+            img,
+            mime_format=doc_format,
+            dpi=self.dpi,
+            media_name=self.media_name,
+            media_type=media_type,
+        )
 
     def compile_surgical_payload(
         self,
@@ -350,14 +417,23 @@ class PatternGenerator:
         bursts: int = 5,
         head_technology: str = "piezo",
         doc_format: str = "image/pwg-raster",
+        force_rgb: bool = False,
+        media_type: str = "Stationery",
     ) -> Tuple[bytes, int]:
         img, _model, effective_bursts = self.build_surgical_image(
             channel=channel,
             step=step,
             bursts=bursts,
             head_technology=head_technology,
+            force_rgb=force_rgb,
         )
-        payload = encode_image_for_format(img, mime_format=doc_format, dpi=self.dpi, media_name=self.media_name)
+        payload = encode_image_for_format(
+            img,
+            mime_format=doc_format,
+            dpi=self.dpi,
+            media_name=self.media_name,
+            media_type=media_type,
+        )
         return payload, effective_bursts
 
     def generate_png(self, mode: str) -> Path:
@@ -374,7 +450,7 @@ class PatternGenerator:
         head_technology: str = "piezo",
     ) -> Tuple[Path, str]:
         img, color_model, _ = self.build_surgical_image(channel, step, bursts, head_technology)
-        canon = {"c": "cyan", "cyan": "cyan", "m": "magenta", "magenta": "magenta", "y": "yellow", "yellow": "yellow", "k": "black", "black": "black"}[channel.lower().strip()]
+        canon = SURGICAL_CHANNEL_MAP[channel.lower().strip()]
         out_path = self.assets_dir / f"purge_surgical_{canon}_s{int(step)}.png"
         img.save(out_path, format="PNG")
         return out_path, color_model
@@ -394,7 +470,7 @@ class PatternGenerator:
         head_technology: str = "piezo",
     ) -> Path:
         """Pure-Python surgical PWG-Raster file compilation (zero CUPS)."""
-        canon = {"c": "cyan", "cyan": "cyan", "m": "magenta", "magenta": "magenta", "y": "yellow", "yellow": "yellow", "k": "black", "black": "black"}[channel.lower().strip()]
+        canon = SURGICAL_CHANNEL_MAP[channel.lower().strip()]
         pwg_path = self.assets_dir / f"purge_surgical_{canon}_s{int(step)}.pwg"
         payload, _ = self.compile_surgical_payload(channel, step, bursts=bursts, head_technology=head_technology, doc_format="image/pwg-raster")
         pwg_path.write_bytes(payload)

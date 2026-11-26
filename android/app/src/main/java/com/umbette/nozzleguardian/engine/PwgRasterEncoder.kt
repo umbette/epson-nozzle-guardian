@@ -209,7 +209,7 @@ object PwgRasterEncoder {
         putIntBE(header, 456, 1)
         putIntBE(header, 460, 1)
         putIntBE(header, 480, 0x00FFFFFF)
-        System.arraycopy(packCstr(spec.mediaName, 64), 0, header, 1720, 64)
+        System.arraycopy(packCstr(spec.mediaName, 64), 0, header, 1732, 64)
 
         val out = ByteArrayOutputStream(PWG_MAGIC.size + PWG_HEADER_SIZE + surface.height * 32)
         out.write(PWG_MAGIC)

@@ -30,8 +30,10 @@ TAG_BOOLEAN = 0x22
 TAG_ENUM = 0x23
 TAG_OCTET_STRING = 0x30
 TAG_RESOLUTION = 0x32
+TAG_BEGIN_COLLECTION = 0x34
 TAG_TEXT_WITH_LANG = 0x35
 TAG_NAME_WITH_LANG = 0x36
+TAG_END_COLLECTION = 0x37
 TAG_TEXT_WITHOUT_LANG = 0x41
 TAG_NAME_WITHOUT_LANG = 0x42
 TAG_KEYWORD = 0x44
@@ -39,6 +41,7 @@ TAG_URI = 0x45
 TAG_CHARSET = 0x47
 TAG_NATURAL_LANGUAGE = 0x48
 TAG_MIME_TYPE = 0x49
+TAG_MEMBER_NAME = 0x4A
 
 IPP_PATHS = ["/ipp/print", "/ipp/printer", "/ipp", "/"]
 
@@ -51,8 +54,11 @@ REQUESTED_PRINTER_ATTRS = [
     "document-format-supported",
     "media-supported",
     "media-default",
+    "media-type-supported",
     "color-supported",
+    "print-color-mode-supported",
     "pwg-raster-document-resolution-supported",
+    "pwg-raster-document-type-supported",
     "marker-names",
     "marker-levels",
     "marker-types",
@@ -112,6 +118,7 @@ def build_print_job_request(
     color_mode: str = "color",
     job_name: str = "Nozzle Guardian Purge",
     request_id: int = 2,
+    media_type: Optional[str] = None,
 ) -> bytes:
     """Encodes an RFC 8011 Print-Job (0x0002) binary IPP header."""
     buf = bytearray(IPP_VERSION)
@@ -125,7 +132,16 @@ def build_print_job_request(
     buf.extend(_encode_attr(TAG_MIME_TYPE, "document-format", doc_format.encode("utf-8")))
 
     buf.append(TAG_JOB_ATTRIBUTES)
-    buf.extend(_encode_attr(TAG_KEYWORD, "media", media.encode("utf-8")))
+    if media_type and media_type.lower().strip() != "auto":
+        mt_bytes = media_type.strip().encode("utf-8")
+        buf.extend(_encode_attr(TAG_BEGIN_COLLECTION, "media-col", b""))
+        buf.extend(_encode_attr(TAG_MEMBER_NAME, "", b"media-size-name"))
+        buf.extend(_encode_attr(TAG_KEYWORD, "", media.encode("utf-8")))
+        buf.extend(_encode_attr(TAG_MEMBER_NAME, "", b"media-type"))
+        buf.extend(_encode_attr(TAG_KEYWORD, "", mt_bytes))
+        buf.extend(_encode_attr(TAG_END_COLLECTION, "", b""))
+    else:
+        buf.extend(_encode_attr(TAG_KEYWORD, "media", media.encode("utf-8")))
     buf.extend(_encode_attr(TAG_KEYWORD, "print-color-mode", color_mode.encode("utf-8")))
     buf.extend(_encode_attr(TAG_KEYWORD, "sides", b"one-sided"))
 
@@ -254,6 +270,7 @@ async def send_ipp_print_job(
     endpoint_path: str = "/ipp/print",
     timeout_sec: float = 25.0,
     client: Optional[httpx.AsyncClient] = None,
+    media_type: Optional[str] = None,
 ) -> Tuple[bool, str]:
     """Submits a Print-Job over HTTP/HTTPS IPP without external ipptool binary."""
     http_scheme = "https" if (use_tls and port != 60000) else "http"
@@ -266,6 +283,7 @@ async def send_ipp_print_job(
         doc_format=doc_format,
         media=media,
         color_mode=color_mode,
+        media_type=media_type,
     )
     body = ipp_header + payload
 
