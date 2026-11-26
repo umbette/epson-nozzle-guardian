@@ -35,12 +35,39 @@ object WorkspaceEngine {
         name: String,
         wifiSsid: String,
         iconKey: String,
+        networkFingerprint: String? = null,
+        networkLabel: String? = null,
     ): MultiPrinterWorkspace {
         val cleanName = name.trim()
         if (cleanName.isBlank()) return workspace
         val updated = workspace.locations.map { loc ->
             if (loc.id == locationId) {
-                loc.copy(name = cleanName, wifiSsid = wifiSsid.trim(), iconKey = iconKey)
+                loc.copy(
+                    name = cleanName,
+                    wifiSsid = wifiSsid.trim(),
+                    iconKey = iconKey,
+                    networkFingerprint = networkFingerprint?.trim() ?: loc.networkFingerprint,
+                    networkLabel = networkLabel?.trim() ?: loc.networkLabel,
+                )
+            } else {
+                loc
+            }
+        }
+        return workspace.copy(locations = updated)
+    }
+
+    fun bindLocationNetwork(
+        workspace: MultiPrinterWorkspace,
+        locationId: String,
+        networkFingerprint: String,
+        networkLabel: String,
+    ): MultiPrinterWorkspace {
+        val updated = workspace.locations.map { loc ->
+            if (loc.id == locationId) {
+                loc.copy(
+                    networkFingerprint = networkFingerprint.trim(),
+                    networkLabel = networkLabel.trim(),
+                )
             } else {
                 loc
             }
@@ -100,12 +127,19 @@ object WorkspaceEngine {
     fun printersForCurrentWifi(
         workspace: MultiPrinterWorkspace,
         currentWifiSsid: String?,
+        currentNetworkFingerprint: String? = null,
     ): List<PrinterProfile> {
         val cleanSsid = currentWifiSsid?.trim()?.removePrefix("\"")?.removeSuffix("\"").orEmpty()
+        val cleanFp = currentNetworkFingerprint?.trim().orEmpty()
         val locById = workspace.locations.associateBy { it.id }
         return workspace.printers.filter { printer ->
             if (printer.state.printerHost.isBlank()) return@filter false
-            val locSsid = locById[printer.locationId]?.wifiSsid?.trim().orEmpty()
+            val loc = locById[printer.locationId] ?: return@filter true
+            val locFp = loc.networkFingerprint.trim()
+            if (locFp.isNotBlank() && cleanFp.isNotBlank()) {
+                return@filter locFp.equals(cleanFp, ignoreCase = true)
+            }
+            val locSsid = loc.wifiSsid.trim()
             locSsid.isBlank() || cleanSsid.isBlank() || locSsid.equals(cleanSsid, ignoreCase = true)
         }
     }

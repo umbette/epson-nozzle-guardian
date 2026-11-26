@@ -215,6 +215,8 @@ data class LocationGroup(
     val name: String,
     val wifiSsid: String = "",
     val iconKey: String = "home",
+    val networkFingerprint: String = "",
+    val networkLabel: String = "",
 )
 
 data class PrinterProfile(

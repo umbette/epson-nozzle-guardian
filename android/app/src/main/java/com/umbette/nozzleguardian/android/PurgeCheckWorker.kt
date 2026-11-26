@@ -34,8 +34,9 @@ class PurgeCheckWorker(
         var workspace = store.loadWorkspace()
         val entitlement = store.loadEntitlement()
         val ssid = currentWifiSsid()
+        val lanInfo = LocalNetworkDetector.detectCurrentWifiLan(applicationContext)
 
-        val reachablePrinters = WorkspaceEngine.printersForCurrentWifi(workspace, ssid)
+        val reachablePrinters = WorkspaceEngine.printersForCurrentWifi(workspace, ssid, lanInfo?.fingerprint)
         if (reachablePrinters.isEmpty()) {
             return Result.success()
         }

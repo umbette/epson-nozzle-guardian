@@ -19,12 +19,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Print
@@ -79,7 +77,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun NozzleGuardianApp(viewModel: NozzleGuardianViewModel) {
     val ui by viewModel.uiState.collectAsState()
-    var activeTab by remember { mutableIntStateOf(0) }
+    var activeTab by remember { mutableIntStateOf(0) } // 0 = Printers (Home -> Hub), 1 = Pro & Account
 
     val notifPermLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
     LaunchedEffect(Unit) {
@@ -163,7 +161,13 @@ fun NozzleGuardianApp(viewModel: NozzleGuardianViewModel) {
                 )
                 NavigationBarItem(
                     selected = activeTab == 0,
-                    onClick = { activeTab = 0 },
+                    onClick = {
+                        if (activeTab == 0) {
+                            viewModel.closePrinterDetail()
+                        } else {
+                            activeTab = 0
+                        }
+                    },
                     colors = navColors,
                     icon = { Icon(Icons.Filled.Print, contentDescription = null) },
                     label = { Text(stringResource(R.string.nav_printers), maxLines = 1) },
@@ -171,13 +175,6 @@ fun NozzleGuardianApp(viewModel: NozzleGuardianViewModel) {
                 NavigationBarItem(
                     selected = activeTab == 1,
                     onClick = { activeTab = 1 },
-                    colors = navColors,
-                    icon = { Icon(Icons.Filled.CameraAlt, contentDescription = null) },
-                    label = { Text(stringResource(R.string.nav_scanner), maxLines = 1) },
-                )
-                NavigationBarItem(
-                    selected = activeTab == 2,
-                    onClick = { activeTab = 2 },
                     colors = navColors,
                     icon = { Icon(Icons.Filled.Person, contentDescription = null) },
                     label = { Text(stringResource(R.string.nav_pro_info), maxLines = 1) },
@@ -215,24 +212,21 @@ fun NozzleGuardianApp(viewModel: NozzleGuardianViewModel) {
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                when (activeTab) {
-                    0 -> {
-                        val detailPrinter = ui.detailPrinterId?.let { id ->
-                            ui.workspace.printers.firstOrNull { it.id == id }
-                        }
-                        if (detailPrinter != null) {
-                            PrinterDetailScreen(
-                                profile = detailPrinter,
-                                ui = ui,
-                                viewModel = viewModel,
-                                onOpenScannerTab = { activeTab = 1 },
-                            )
-                        } else {
-                            HomeDashboardScreen(ui, viewModel)
-                        }
+                if (activeTab == 0) {
+                    val detailPrinter = ui.detailPrinterId?.let { id ->
+                        ui.workspace.printers.firstOrNull { it.id == id }
                     }
-                    1 -> ScannerScreen(ui, viewModel)
-                    else -> AccountProScreen(ui, viewModel)
+                    if (detailPrinter != null) {
+                        PrinterDetailScreen(
+                            profile = detailPrinter,
+                            ui = ui,
+                            viewModel = viewModel,
+                        )
+                    } else {
+                        HomeDashboardScreen(ui, viewModel)
+                    }
+                } else {
+                    AccountProScreen(ui, viewModel)
                 }
                 Spacer(modifier = Modifier.height(16.dp))
             }

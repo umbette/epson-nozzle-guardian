@@ -7,6 +7,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -42,6 +43,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.umbette.nozzleguardian.BuildConfig
@@ -56,6 +58,7 @@ fun AccountProScreen(ui: MainUiState, viewModel: NozzleGuardianViewModel) {
 
     var emailInput by remember(ui.account.email) { mutableStateOf(ui.account.email) }
     var nameInput by remember(ui.account.displayName) { mutableStateOf(ui.account.displayName) }
+    var pairingInput by remember(ui.account.pairingToken) { mutableStateOf(ui.account.pairingToken) }
     var syncUrlInput by remember(ui.account.syncServerUrl) { mutableStateOf(ui.account.syncServerUrl) }
     var showTelemetrySample by remember { mutableStateOf(false) }
 
@@ -201,22 +204,37 @@ fun AccountProScreen(ui: MainUiState, viewModel: NozzleGuardianViewModel) {
                 onClick = { showTelemetrySample = true },
                 shape = RoundedCornerShape(12.dp),
                 border = BorderStroke(1.dp, AccentCyan.copy(alpha = 0.4f)),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                 modifier = Modifier.weight(1f).height(40.dp),
             ) {
-                Text(stringResource(R.string.telemetry_preview_btn), color = AccentCyan, fontSize = 12.sp, maxLines = 1, softWrap = false)
+                Text(
+                    stringResource(R.string.telemetry_preview_btn),
+                    color = AccentCyan,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
             OutlinedButton(
                 onClick = { viewModel.resetTelemetryId() },
                 shape = RoundedCornerShape(12.dp),
                 border = BorderStroke(1.dp, CardBorder),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                 modifier = Modifier.weight(1f).height(40.dp),
             ) {
-                Text(stringResource(R.string.telemetry_reset_id_btn), fontSize = 12.sp, maxLines = 1, softWrap = false)
+                Text(
+                    stringResource(R.string.telemetry_reset_id_btn),
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
     }
 
-    // 3. Optional Account & Backup Sync Card
+    // 3. Independent Passwordless / Pairing Account (Zero Google / Social Login!)
     ModernCard {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -230,6 +248,7 @@ fun AccountProScreen(ui: MainUiState, viewModel: NozzleGuardianViewModel) {
             }
         }
         Text(stringResource(R.string.account_card_body), style = MaterialTheme.typography.bodySmall, color = TextMuted)
+        Text(stringResource(R.string.account_no_google_note), style = MaterialTheme.typography.bodySmall, color = AccentCyan)
 
         NgTextField(
             value = emailInput,
@@ -241,6 +260,12 @@ fun AccountProScreen(ui: MainUiState, viewModel: NozzleGuardianViewModel) {
             value = nameInput,
             onValueChange = { nameInput = it },
             label = stringResource(R.string.account_name_label),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        NgTextField(
+            value = pairingInput,
+            onValueChange = { pairingInput = it },
+            label = stringResource(R.string.account_pairing_label),
             modifier = Modifier.fillMaxWidth(),
         )
         NgTextField(
@@ -256,11 +281,11 @@ fun AccountProScreen(ui: MainUiState, viewModel: NozzleGuardianViewModel) {
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
             Button(
-                onClick = { viewModel.saveAccountSession(emailInput, nameInput, syncUrlInput) },
+                onClick = { viewModel.saveAccountSession(emailInput, nameInput, pairingInput, syncUrlInput) },
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.weight(1f).height(44.dp),
             ) {
-                Text(stringResource(R.string.account_save_btn), maxLines = 1, softWrap = false)
+                Text(stringResource(R.string.account_save_btn), maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
             }
             if (ui.account.signedIn) {
                 OutlinedButton(
@@ -269,7 +294,7 @@ fun AccountProScreen(ui: MainUiState, viewModel: NozzleGuardianViewModel) {
                     border = BorderStroke(1.dp, CardBorder),
                     modifier = Modifier.weight(1f).height(44.dp),
                 ) {
-                    Text(stringResource(R.string.account_signout_btn), maxLines = 1, softWrap = false)
+                    Text(stringResource(R.string.account_signout_btn), maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
                 }
             }
         }
@@ -284,7 +309,7 @@ fun AccountProScreen(ui: MainUiState, viewModel: NozzleGuardianViewModel) {
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.weight(1f).height(44.dp),
             ) {
-                Text(stringResource(R.string.account_copy_json_btn), maxLines = 1, softWrap = false)
+                Text(stringResource(R.string.account_copy_json_btn), maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
             }
             OutlinedButton(
                 onClick = { viewModel.syncWorkspaceToServer() },
@@ -292,7 +317,7 @@ fun AccountProScreen(ui: MainUiState, viewModel: NozzleGuardianViewModel) {
                 border = BorderStroke(1.dp, AccentCyan.copy(alpha = 0.45f)),
                 modifier = Modifier.weight(1f).height(44.dp),
             ) {
-                Text(stringResource(R.string.account_sync_now_btn), color = AccentCyan, maxLines = 1, softWrap = false)
+                Text(stringResource(R.string.account_sync_now_btn), color = AccentCyan, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
             }
         }
     }

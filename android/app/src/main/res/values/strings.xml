@@ -157,12 +157,23 @@
     <string name="telemetry_card_title">Help Us Improve (Opt-In Telemetry)</string>
     <string name="telemetry_optin_body">Off by default. We NEVER collect what you print, photos, filenames, IPs, Wi-Fi SSIDs, or emails—only anonymous printer model family, purge frequency, and cleaning outcome.</string>
     <string name="telemetry_toggle_label">Share anonymous compatibility stats</string>
-    <string name="telemetry_preview_btn">View Sample JSON</string>
-    <string name="telemetry_reset_id_btn">Reset Anonymous ID</string>
+    <string name="telemetry_preview_btn">Sample JSON</string>
+    <string name="telemetry_reset_id_btn">Reset ID</string>
     <string name="telemetry_preview_title">Exact Data Sent (Zero PII)</string>
     <string name="telemetry_preview_note">Only sent when you explicitly turn on the toggle above.</string>
     <string name="telemetry_status_on">Opt-In active (ID: %1$s…)</string>
     <string name="telemetry_status_off">Opt-Out active (Zero network telemetry)</string>
+
+    <string name="subtab_status_purge">Status &amp; Purge</string>
+    <string name="subtab_scanner_nozzles">Scanner &amp; Nozzles</string>
+    <string name="subtab_rules_network">Rules &amp; Wi-Fi</string>
+    <string name="wifi_bind_current_btn">Bind Current Wi-Fi</string>
+    <string name="wifi_bound_chip">Wi-Fi linked: %1$s</string>
+    <string name="wifi_unbound_hint">No Wi-Fi linked yet — auto-linked when adding a printer or tap below (no GPS needed).</string>
+    <string name="banner_wifi_bound">Location linked to current Wi-Fi (%1$s).</string>
+    <string name="banner_wifi_unavailable">Connect to a Wi-Fi network first to link this location.</string>
+    <string name="account_pairing_label">Passwordless Pairing / Device Token (optional)</string>
+    <string name="account_no_google_note">Independent account: no Google, Apple, or social login required.</string>
 
     <string name="account_card_title">Optional Account &amp; Backup Sync</string>
     <string name="account_card_body">No account required for local use. Add an optional profile or self-hosted URL (e.g. port 8086) only if you want cross-device sync.</string>

@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.filled.WifiFind
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -39,6 +40,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -62,7 +64,7 @@ import com.umbette.nozzleguardian.engine.ProFeature
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeDashboardScreen(ui: MainUiState, viewModel: NozzleGuardianViewModel) {
-    var selectedFilterLocId by remember { mutableStateOf<String?>(null) } // null = All locations
+    var selectedFilterLocId by remember { mutableStateOf<String?>(null) }
     var showLocationSheet by remember { mutableStateOf(false) }
     var editingLocation by remember { mutableStateOf<LocationGroup?>(null) }
     var showAddPrinterSheet by remember { mutableStateOf(false) }
@@ -75,6 +77,9 @@ fun HomeDashboardScreen(ui: MainUiState, viewModel: NozzleGuardianViewModel) {
             locations = ui.workspace.locations,
             isPro = ui.entitlement.isProActive,
             initialEdit = editingLocation,
+            detectedLan = ui.currentDetectedLan,
+            onRefreshLan = { viewModel.refreshCurrentLan() },
+            onBindCurrentWifi = { locId -> viewModel.bindLocationToCurrentWifi(locId) },
             onDismiss = {
                 showLocationSheet = false
                 editingLocation = null
@@ -130,6 +135,7 @@ fun HomeDashboardScreen(ui: MainUiState, viewModel: NozzleGuardianViewModel) {
             }
             FilledTonalButton(
                 onClick = {
+                    viewModel.refreshCurrentLan()
                     editingLocation = selectedFilterLocId?.let { locById[it] }
                     showLocationSheet = true
                 },
@@ -168,6 +174,7 @@ fun HomeDashboardScreen(ui: MainUiState, viewModel: NozzleGuardianViewModel) {
 
             ui.workspace.locations.forEach { loc ->
                 val selected = loc.id == selectedFilterLocId
+                val hasWifiBound = loc.networkFingerprint.isNotBlank() || loc.wifiSsid.isNotBlank()
                 Surface(
                     shape = RoundedCornerShape(50),
                     color = if (selected) AccentCyan.copy(alpha = 0.20f) else CardSurfaceAlt,
@@ -185,21 +192,28 @@ fun HomeDashboardScreen(ui: MainUiState, viewModel: NozzleGuardianViewModel) {
                             tint = if (selected) AccentCyan else TextMuted,
                             modifier = Modifier.size(14.dp),
                         )
-                        val ssidSuffix = if (loc.wifiSsid.isNotBlank()) " • ${loc.wifiSsid}" else ""
                         Text(
-                            text = "${loc.name}$ssidSuffix",
+                            text = loc.name,
                             fontSize = 12.sp,
                             fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
                             color = if (selected) AccentCyan else TextPrimary,
                             maxLines = 1,
                         )
+                        if (hasWifiBound) {
+                            Icon(
+                                imageVector = Icons.Filled.Wifi,
+                                contentDescription = null,
+                                tint = StatusGreen,
+                                modifier = Modifier.size(12.dp),
+                            )
+                        }
                     }
                 }
             }
         }
     }
 
-    // 2. Printer Cards (filtered strictly by chosen location, no cross-location leak!)
+    // 2. Printer Cards (strictly per location; friendly onboarding if empty)
     val visiblePrinters = if (selectedFilterLocId == null) {
         ui.workspace.printers
     } else {
@@ -265,7 +279,6 @@ fun HomeDashboardScreen(ui: MainUiState, viewModel: NozzleGuardianViewModel) {
             }
         }
 
-        // Quick actions row (mDNS scan + Add printer)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
             FilledTonalButton(
                 onClick = { viewModel.discoverPrinters() },
@@ -298,7 +311,7 @@ fun HomeDashboardScreen(ui: MainUiState, viewModel: NozzleGuardianViewModel) {
         }
     }
 
-    // 3. Discovered Wi-Fi Printers Card (shown when mDNS found devices)
+    // 3. Discovered Wi-Fi Printers Card
     if (ui.discovered.isNotEmpty()) {
         ModernCard {
             Text(stringResource(R.string.home_discovered_title), style = MaterialTheme.typography.titleSmall)
@@ -417,6 +430,9 @@ private fun LocationManagerSheet(
     locations: List<LocationGroup>,
     isPro: Boolean,
     initialEdit: LocationGroup?,
+    detectedLan: DetectedLanInfo?,
+    onRefreshLan: () -> Unit,
+    onBindCurrentWifi: (String) -> Unit,
     onDismiss: () -> Unit,
     onCreate: (name: String, ssid: String, iconKey: String) -> Unit,
     onUpdate: (id: String, name: String, ssid: String, iconKey: String) -> Unit,
@@ -431,6 +447,8 @@ private fun LocationManagerSheet(
     var ssidInput by remember(editing, creatingNew) { mutableStateOf(editing?.wifiSsid ?: "") }
     var iconKey by remember(editing, creatingNew) { mutableStateOf(editing?.iconKey ?: "home") }
 
+    LaunchedEffect(Unit) { onRefreshLan() }
+
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = CardSurface) {
         Column(
             modifier = Modifier
@@ -439,8 +457,9 @@ private fun LocationManagerSheet(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             if (editing != null || creatingNew) {
+                val currentEdit = editing
                 Text(
-                    if (editing != null) stringResource(R.string.home_edit_location) else stringResource(R.string.home_add_location),
+                    if (currentEdit != null) stringResource(R.string.home_edit_location) else stringResource(R.string.home_add_location),
                     style = MaterialTheme.typography.titleMedium,
                     color = TextPrimary,
                 )
@@ -450,6 +469,42 @@ private fun LocationManagerSheet(
                     label = stringResource(R.string.home_location_name_label),
                     modifier = Modifier.fillMaxWidth(),
                 )
+
+                // Zero-GPS 1-tap automatic Wi-Fi recognition inside existing location
+                if (currentEdit != null) {
+                    val liveLoc = locations.firstOrNull { it.id == currentEdit.id } ?: currentEdit
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = CardSurfaceAlt,
+                        border = BorderStroke(1.dp, CardBorder),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            val networkText = if (liveLoc.networkLabel.isNotBlank()) {
+                                stringResource(R.string.wifi_bound_chip, liveLoc.networkLabel)
+                            } else {
+                                stringResource(R.string.wifi_unbound_hint)
+                            }
+                            Text(
+                                networkText,
+                                fontSize = 12.sp,
+                                color = if (liveLoc.networkLabel.isNotBlank()) StatusGreen else TextMuted,
+                            )
+                            FilledTonalButton(
+                                onClick = { onBindCurrentWifi(currentEdit.id) },
+                                enabled = detectedLan != null,
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.fillMaxWidth().height(40.dp),
+                            ) {
+                                Icon(Icons.Filled.Wifi, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
+                                val labelSuffix = detectedLan?.let { " (${it.label})" } ?: ""
+                                Text("${stringResource(R.string.wifi_bind_current_btn)}$labelSuffix", maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
+
                 NgTextField(
                     value = ssidInput,
                     onValueChange = { ssidInput = it },
@@ -496,7 +551,6 @@ private fun LocationManagerSheet(
                     }
                     Button(
                         onClick = {
-                            val currentEdit = editing
                             if (currentEdit != null) {
                                 onUpdate(currentEdit.id, nameInput, ssidInput, iconKey)
                             } else {
@@ -538,8 +592,16 @@ private fun LocationManagerSheet(
                             Icon(locationIconVector(loc.iconKey), contentDescription = null, tint = AccentCyan, modifier = Modifier.size(18.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(loc.name, fontWeight = FontWeight.SemiBold, color = TextPrimary)
-                                if (loc.wifiSsid.isNotBlank()) {
-                                    Text("Wi-Fi: ${loc.wifiSsid}", fontSize = 11.sp, color = TextMuted)
+                                val sub = when {
+                                    loc.networkLabel.isNotBlank() -> stringResource(R.string.wifi_bound_chip, loc.networkLabel)
+                                    loc.wifiSsid.isNotBlank() -> "SSID: ${loc.wifiSsid}"
+                                    else -> stringResource(R.string.wifi_unbound_hint)
+                                }
+                                Text(sub, fontSize = 11.sp, color = if (loc.networkLabel.isNotBlank()) StatusGreen else TextMuted, maxLines = 2)
+                            }
+                            if (loc.networkFingerprint.isBlank() && detectedLan != null) {
+                                IconButton(onClick = { onBindCurrentWifi(loc.id) }, modifier = Modifier.size(32.dp)) {
+                                    Icon(Icons.Filled.Wifi, contentDescription = stringResource(R.string.wifi_bind_current_btn), tint = StatusGreen, modifier = Modifier.size(17.dp))
                                 }
                             }
                             IconButton(onClick = { editing = loc }, modifier = Modifier.size(32.dp)) {

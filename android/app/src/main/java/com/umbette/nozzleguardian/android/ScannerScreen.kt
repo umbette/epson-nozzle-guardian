@@ -52,32 +52,42 @@ import com.umbette.nozzleguardian.R
 import com.umbette.nozzleguardian.engine.HeadTechnology
 import com.umbette.nozzleguardian.engine.NozzleChannel
 import com.umbette.nozzleguardian.engine.PrinterKind
+import com.umbette.nozzleguardian.engine.PrinterProfile
 import com.umbette.nozzleguardian.engine.ProFeature
 import java.io.File
 
+/**
+ * Optical Nozzle Scanner & Manual Surgical Matrix bound directly inside a concrete Printer Hub.
+ * Ensures every camera scan and surgical shot applies cleanly to the selected printer model.
+ */
 @Composable
-fun ScannerScreen(ui: MainUiState, viewModel: NozzleGuardianViewModel) {
+fun PrinterScannerSection(
+    profile: PrinterProfile,
+    ui: MainUiState,
+    viewModel: NozzleGuardianViewModel,
+) {
     val context = LocalContext.current
     var cameraUri by remember { mutableStateOf<Uri?>(null) }
     val hasCameraAccess = ui.entitlement.hasAccess(ProFeature.CAMERA_SCANNER)
-    val activePrinter = ui.activePrinter
-    val isLaser = (ui.status?.printerKind ?: ui.config.lastPrinterKind) == PrinterKind.LASER
+    val st = ui.printerStatuses[profile.id]
+    val cfg = profile.state
+    val isLaser = (st?.printerKind ?: cfg.lastPrinterKind) == PrinterKind.LASER
 
     val takePicture = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
-        if (ok) cameraUri?.let { viewModel.scanSheetUri(it) }
+        if (ok) cameraUri?.let { viewModel.scanSheetUri(it, printerId = profile.id) }
     }
     val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        uri?.let { viewModel.scanSheetUri(it) }
+        uri?.let { viewModel.scanSheetUri(it, printerId = profile.id) }
     }
 
-    if (isLaser && activePrinter != null) {
+    if (isLaser) {
         ModernCard(borderColor = StatusAmber.copy(alpha = 0.45f), containerColor = StatusAmber.copy(alpha = 0.08f)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Icon(Icons.Filled.Info, contentDescription = null, tint = StatusAmber, modifier = Modifier.size(20.dp))
                 Text(stringResource(R.string.detail_laser_title), style = MaterialTheme.typography.titleSmall, color = StatusAmber)
             }
             Text(
-                stringResource(R.string.scanner_laser_notice, activePrinter.displayName),
+                stringResource(R.string.scanner_laser_notice, profile.displayName),
                 style = MaterialTheme.typography.bodySmall,
                 color = TextPrimary,
             )
@@ -234,7 +244,7 @@ fun ScannerScreen(ui: MainUiState, viewModel: NozzleGuardianViewModel) {
                 val chEnum = NozzleChannel.entries.firstOrNull { it.code == rep.targetChannel }
                 if (chEnum != null) {
                     Button(
-                        onClick = { viewModel.triggerSurgicalPurge(chEnum, rep.targetStep) },
+                        onClick = { viewModel.triggerSurgicalPurge(chEnum, rep.targetStep, printerId = profile.id) },
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
                         modifier = Modifier.fillMaxWidth().height(46.dp),
@@ -249,15 +259,15 @@ fun ScannerScreen(ui: MainUiState, viewModel: NozzleGuardianViewModel) {
         }
     }
 
-    // Accessible 2x5 Surgical Matrix (>= 44dp touch targets!)
+    // Accessible 2x5 Surgical Matrix adapted specifically to this PrinterProfile
     ModernCard {
         Text(stringResource(R.string.surgical_title), style = MaterialTheme.typography.titleSmall)
-        if ((ui.status?.headTechnology ?: ui.config.lastHeadTechnology) == HeadTechnology.THERMAL) {
+        if ((st?.headTechnology ?: cfg.lastHeadTechnology) == HeadTechnology.THERMAL) {
             Text(stringResource(R.string.surgical_thermal_note), style = MaterialTheme.typography.bodySmall, color = AccentCyan)
         }
-        val isSixTankMatrix = ui.config.inkProfile == "cmyk6" ||
-            ui.status?.inkProfile == "cmyk6" ||
-            (ui.status?.tankCount ?: 4) >= 6
+        val isSixTankMatrix = cfg.inkProfile == "cmyk6" ||
+            st?.inkProfile == "cmyk6" ||
+            (st?.tankCount ?: 4) >= 6
         val visibleChannels = if (isSixTankMatrix) {
             NozzleChannel.entries
         } else {
@@ -286,7 +296,7 @@ fun ScannerScreen(ui: MainUiState, viewModel: NozzleGuardianViewModel) {
                                     .background(accent.copy(alpha = 0.16f))
                                     .border(1.dp, accent.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
                                     .clickable(enabled = !ui.isBusy) {
-                                        viewModel.triggerSurgicalPurge(channel, step)
+                                        viewModel.triggerSurgicalPurge(channel, step, printerId = profile.id)
                                     },
                             ) {
                                 Text(

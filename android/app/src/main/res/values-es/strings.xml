@@ -94,5 +94,11 @@
     <string name="telemetry_card_title">Ayúdanos a Mejorar (Telemetría Opt-In)</string>
     <string name="telemetry_optin_body">Desactivada por defecto. NUNCA recogemos qué imprimes, fotos, archivos, IP, Wi-Fi o email; solo modelo genérico, frecuencia y eficacia de limpieza.</string>
     <string name="telemetry_toggle_label">Compartir estadísticas anónimas</string>
-    <string name="telemetry_preview_btn">Ver JSON de ejemplo</string>
+    <string name="telemetry_preview_btn">JSON ejemplo</string>
+    <string name="telemetry_reset_id_btn">Reset ID</string>
+    <string name="subtab_status_purge">Estado y Purga</string>
+    <string name="subtab_scanner_nozzles">Escáner y Boquillas</string>
+    <string name="subtab_rules_network">Reglas y Red</string>
+    <string name="wifi_bind_current_btn">Vincular Wi-Fi actual</string>
+    <string name="account_no_google_note">Cuenta independiente: sin acceso con Google ni redes sociales.</string>
 </resources>

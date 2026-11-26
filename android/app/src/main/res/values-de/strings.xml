@@ -43,4 +43,11 @@
     <string name="pro_restore_purchases">Kauf wiederherstellen</string>
     <string name="telemetry_card_title">Hilf uns, besser zu werden (Opt-In)</string>
     <string name="telemetry_optin_body">Standardmäßig aus. Wir erfassen NIEMALS Druckinhalte, Fotos, IP-Adressen, WLAN-SSIDs oder E-Mails – nur anonyme Modell- und Spüldaten.</string>
+    <string name="telemetry_preview_btn">Beispiel-JSON</string>
+    <string name="telemetry_reset_id_btn">ID zurücksetzen</string>
+    <string name="subtab_status_purge">Status &amp; Spülung</string>
+    <string name="subtab_scanner_nozzles">Scanner &amp; Düsen</string>
+    <string name="subtab_rules_network">Regeln &amp; WLAN</string>
+    <string name="wifi_bind_current_btn">Aktuelles WLAN binden</string>
+    <string name="account_no_google_note">Eigenständiges Konto: kein Google-Login nötig.</string>
 </resources>

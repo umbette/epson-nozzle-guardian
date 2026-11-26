@@ -183,6 +183,19 @@ class EngineUnitTests {
         assertEquals("Studio5G", editedWs.locations.first { it.id == "office" }.wifiSsid)
         assertEquals("studio", editedWs.locations.first { it.id == "office" }.iconKey)
 
+        val boundWs = WorkspaceEngine.bindLocationNetwork(
+            editedWs,
+            locationId = "home",
+            networkFingerprint = "gw=192.168.1.1|net=192.168.1.0/24",
+            networkLabel = "192.168.1.0/24 • GW 192.168.1.1",
+        )
+        val matchedByLan = WorkspaceEngine.printersForCurrentWifi(
+            boundWs,
+            currentWifiSsid = null,
+            currentNetworkFingerprint = "gw=192.168.1.1|net=192.168.1.0/24",
+        )
+        assertEquals(listOf("p1"), matchedByLan.map { it.id })
+
         assertEquals(4, PrinterClassification.recommendedThresholdDays(PrinterKind.INKJET, HeadTechnology.THERMAL, 4))
         assertEquals(4, PrinterClassification.recommendedThresholdDays(PrinterKind.INKJET, HeadTechnology.PIEZO, 6))
         assertEquals(6, PrinterClassification.recommendedThresholdDays(PrinterKind.INKJET, HeadTechnology.PIEZO, 4))

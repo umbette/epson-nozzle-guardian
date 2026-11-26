@@ -43,4 +43,11 @@
     <string name="pro_restore_purchases">Restaurer l\'achat</string>
     <string name="telemetry_card_title">Aidez-nous à Améliorer (Opt-In)</string>
     <string name="telemetry_optin_body">Désactivée par défaut. Aucune donnée sur vos impressions, photos, IP, Wi-Fi ou e-mail ; uniquement des statistiques anonymes de modèle et d\'efficacité.</string>
+    <string name="telemetry_preview_btn">Aperçu JSON</string>
+    <string name="telemetry_reset_id_btn">Reset ID</string>
+    <string name="subtab_status_purge">État &amp; Purge</string>
+    <string name="subtab_scanner_nozzles">Scanner &amp; Buses</string>
+    <string name="subtab_rules_network">Règles &amp; Réseau</string>
+    <string name="wifi_bind_current_btn">Lier Wi-Fi actuel</string>
+    <string name="account_no_google_note">Compte indépendant : aucune connexion Google requise.</string>
 </resources>

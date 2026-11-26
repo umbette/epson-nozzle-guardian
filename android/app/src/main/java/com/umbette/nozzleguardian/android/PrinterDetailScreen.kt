@@ -1,8 +1,9 @@
 package com.umbette.nozzleguardian.android
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -15,16 +16,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
@@ -38,7 +35,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -46,11 +42,13 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -71,12 +69,12 @@ fun PrinterDetailScreen(
     profile: PrinterProfile,
     ui: MainUiState,
     viewModel: NozzleGuardianViewModel,
-    onOpenScannerTab: () -> Unit,
 ) {
     BackHandler { viewModel.closePrinterDetail() }
 
     val st = ui.printerStatuses[profile.id]
     val cfg = profile.state
+    var subTab by remember(profile.id) { mutableIntStateOf(0) } // 0=Status&Purge, 1=Scanner, 2=Rules&Network
     var hostInput by remember(profile.id, cfg.printerHost) { mutableStateOf(cfg.printerHost) }
     var portInput by remember(profile.id, cfg.printerPort) { mutableStateOf(cfg.printerPort.toString()) }
     var useTls by remember(profile.id, cfg.useTls) { mutableStateOf(cfg.useTls) }
@@ -88,7 +86,6 @@ fun PrinterDetailScreen(
     var daysFloat by remember(profile.id, cfg.inactivityThresholdDays) {
         mutableFloatStateOf(cfg.inactivityThresholdDays.toFloat())
     }
-    var showTechSettings by remember { mutableStateOf(cfg.printerHost.isBlank()) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
 
     if (showDeleteConfirm) {
@@ -116,7 +113,7 @@ fun PrinterDetailScreen(
         )
     }
 
-    // Top Navigation Sub-header
+    // Printer Hub Header
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -149,7 +146,45 @@ fun PrinterDetailScreen(
         }
     }
 
-    // 1. Hero Status & Visual Ink/Toner Card
+    // Unified 3-Pill Hub Switcher (Status & Purge | Scanner & Nozzles | Rules & Wi-Fi)
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(CardSurface)
+            .border(1.dp, CardBorder, RoundedCornerShape(14.dp))
+            .padding(4.dp),
+    ) {
+        val tabs = listOf(
+            R.string.subtab_status_purge,
+            R.string.subtab_scanner_nozzles,
+            R.string.subtab_rules_network,
+        )
+        tabs.forEachIndexed { idx, titleRes ->
+            val selected = subTab == idx
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .weight(1f)
+                    .height(36.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(if (selected) AccentCyan.copy(alpha = 0.20f) else Color.Transparent)
+                    .clickable { subTab = idx },
+            ) {
+                Text(
+                    text = stringResource(titleRes),
+                    fontSize = 11.5.sp,
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                    color = if (selected) AccentCyan else TextMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = 4.dp),
+                )
+            }
+        }
+    }
+
     val effectiveKind = st?.printerKind ?: cfg.lastPrinterKind
     val effectiveTech = st?.headTechnology ?: cfg.lastHeadTechnology
     val (heroBrand, heroSilhouette) = PrinterClassification.inferVisuals(
@@ -158,284 +193,235 @@ fun PrinterDetailScreen(
         kind = effectiveKind,
     )
 
-    ModernCard(
-        borderColor = when {
-            effectiveKind == PrinterKind.LASER -> StatusAmber.copy(alpha = 0.45f)
-            st?.online == true -> StatusGreen.copy(alpha = 0.35f)
-            st?.online == false -> StatusRed.copy(alpha = 0.35f)
-            else -> CardBorder
-        },
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            PrinterSilhouetteArt(heroSilhouette, heroBrand, size = 54.dp)
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    BrandPill(heroBrand)
-                    Text(
-                        st?.makeAndModel ?: profile.displayName,
-                        style = MaterialTheme.typography.titleSmall,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                Text(
-                    "${stringResource(headTechTitleRes(effectiveTech))} • ${stringResource(silhouetteTitleRes(heroSilhouette))}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextMuted,
-                )
-            }
-            when {
-                effectiveKind == PrinterKind.LASER -> StatusBadge(stringResource(R.string.badge_laser), StatusAmber)
-                st?.online == true -> StatusBadge(stringResource(R.string.badge_online), StatusGreen)
-                st?.online == false -> StatusBadge(stringResource(R.string.badge_offline), StatusRed)
-            }
-        }
-
-        if (st == null) {
-            Text(stringResource(R.string.home_never_checked), style = MaterialTheme.typography.bodySmall, color = TextMuted)
-            OutlinedButton(
-                onClick = { viewModel.refreshStatus(profile.id, runDormancyCheck = false) },
-                enabled = !ui.isBusy && cfg.printerHost.isNotBlank(),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth().height(42.dp),
+    when (subTab) {
+        // Sub-Tab 0: Status, Ink Bars & Direct Purge
+        0 -> {
+            ModernCard(
+                borderColor = when {
+                    effectiveKind == PrinterKind.LASER -> StatusAmber.copy(alpha = 0.45f)
+                    st?.online == true -> StatusGreen.copy(alpha = 0.35f)
+                    st?.online == false -> StatusRed.copy(alpha = 0.35f)
+                    else -> CardBorder
+                },
             ) {
-                Icon(Icons.Filled.Search, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(6.dp))
-                Text(stringResource(R.string.detail_verify_now))
-            }
-        } else {
-            if (st.isMediaEmpty) {
-                Text(stringResource(R.string.detail_media_empty), color = StatusRed, style = MaterialTheme.typography.bodySmall)
-            }
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                StatPill(stringResource(R.string.detail_counters_bw), st.monochromePages?.toString() ?: "—", Modifier.weight(1f))
-                StatPill(stringResource(R.string.detail_counters_color), st.colorPages?.toString() ?: "—", Modifier.weight(1f))
-                StatPill(stringResource(R.string.detail_counters_total), st.totalPages?.toString() ?: "—", Modifier.weight(1f))
-            }
-            if (st.markers.isNotEmpty()) {
-                val chunks = st.markers.chunked(2)
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    chunks.forEach { rowMarkers ->
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            rowMarkers.forEach { marker ->
-                                InkTankBar(marker, modifier = Modifier.weight(1f))
-                            }
-                            if (rowMarkers.size == 1) {
-                                Spacer(modifier = Modifier.weight(1f))
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // 2. Educational Laser Notice OR Inkjet Controls
-    if (effectiveKind == PrinterKind.LASER) {
-        ModernCard(borderColor = StatusAmber.copy(alpha = 0.45f), containerColor = StatusAmber.copy(alpha = 0.08f)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(Icons.Filled.Info, contentDescription = null, tint = StatusAmber, modifier = Modifier.size(20.dp))
-                Text(stringResource(R.string.detail_laser_title), style = MaterialTheme.typography.titleSmall, color = StatusAmber)
-            }
-            Text(
-                stringResource(R.string.detail_laser_body, st?.makeAndModel ?: profile.displayName),
-                style = MaterialTheme.typography.bodySmall,
-                color = TextPrimary,
-            )
-        }
-    } else {
-        // Direct Micro-Purge Card (Always Free)
-        ModernCard {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(Icons.Filled.CleaningServices, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(18.dp))
-                Text(stringResource(R.string.detail_purge_card_title), style = MaterialTheme.typography.titleSmall)
-            }
-            val canPurge = cfg.printerHost.isNotBlank() && !ui.isBusy
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                FilledTonalButton(
-                    onClick = { viewModel.triggerManualPurge(PurgeMode.K, profile.id) },
-                    enabled = canPurge,
-                    shape = RoundedCornerShape(12.dp),
-                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 8.dp),
-                    modifier = Modifier.weight(1f).height(46.dp),
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text(stringResource(R.string.detail_purge_k), maxLines = 1, softWrap = false, fontSize = 13.sp)
-                }
-                FilledTonalButton(
-                    onClick = { viewModel.triggerManualPurge(PurgeMode.CMY, profile.id) },
-                    enabled = canPurge,
-                    shape = RoundedCornerShape(12.dp),
-                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 8.dp),
-                    modifier = Modifier.weight(1f).height(46.dp),
-                ) {
-                    Text(stringResource(R.string.detail_purge_color), maxLines = 1, softWrap = false, fontSize = 13.sp)
-                }
-                Button(
-                    onClick = { viewModel.triggerManualPurge(PurgeMode.CMYK, profile.id) },
-                    enabled = canPurge,
-                    shape = RoundedCornerShape(12.dp),
-                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 8.dp),
-                    modifier = Modifier.weight(1f).height(46.dp),
-                ) {
-                    Text(stringResource(R.string.detail_purge_cmyk), maxLines = 1, softWrap = false, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                }
-            }
-            val isSixTank = inkProfile == "cmyk6" || st?.inkProfile == "cmyk6" || (st?.tankCount ?: 4) >= 6
-            if (isSixTank) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    Button(
-                        onClick = { viewModel.triggerManualPurge(PurgeMode.CMYK6, profile.id) },
-                        enabled = canPurge,
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F766E), contentColor = Color.White),
-                        modifier = Modifier.weight(1f).height(44.dp),
-                    ) {
-                        Text(stringResource(R.string.detail_purge_6tank), maxLines = 1, softWrap = false, fontSize = 13.sp)
-                    }
-                    FilledTonalButton(
-                        onClick = { viewModel.triggerManualPurge(PurgeMode.PB_GY, profile.id) },
-                        enabled = canPurge,
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.weight(1f).height(44.dp),
-                    ) {
-                        Text(stringResource(R.string.detail_purge_pb_gy), maxLines = 1, softWrap = false, fontSize = 13.sp)
-                    }
-                }
-            }
-        }
-
-        // Per-Printer Frequency & Schedule Card
-        val hasAutoPurgeAccess = ui.entitlement.hasAccess(ProFeature.AUTO_PURGE)
-        val switchColors = SwitchDefaults.colors(
-            checkedThumbColor = BgDeep,
-            checkedTrackColor = AccentCyan,
-            uncheckedTrackColor = CardSurfaceAlt,
-            uncheckedBorderColor = CardBorder,
-        )
-        val recommendedDays = PrinterClassification.recommendedThresholdDays(effectiveKind, effectiveTech, st?.tankCount ?: 4)
-
-        ModernCard {
-            Text(stringResource(R.string.detail_schedule_card_title), style = MaterialTheme.typography.titleSmall)
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(stringResource(R.string.detail_auto_purge_title), fontWeight = FontWeight.Medium)
-                        if (!hasAutoPurgeAccess) {
-                            ProBadge(stringResource(R.string.badge_pro))
+                    PrinterSilhouetteArt(heroSilhouette, heroBrand, size = 54.dp)
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            BrandPill(heroBrand)
+                            Text(
+                                st?.makeAndModel ?: profile.displayName,
+                                style = MaterialTheme.typography.titleSmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
                         }
-                    }
-                    Text(stringResource(R.string.detail_auto_purge_subtitle), style = MaterialTheme.typography.bodySmall, color = TextMuted)
-                }
-                Switch(
-                    checked = autoPurge && hasAutoPurgeAccess,
-                    onCheckedChange = { wantEnable ->
-                        if (wantEnable && !hasAutoPurgeAccess) {
-                            viewModel.requestPaywall(ProFeature.AUTO_PURGE)
-                        } else {
-                            autoPurge = wantEnable
-                        }
-                    },
-                    colors = switchColors,
-                )
-            }
-
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(stringResource(R.string.detail_inactivity_threshold), style = MaterialTheme.typography.bodyMedium)
-                    Text(
-                        stringResource(R.string.detail_days_unit, daysFloat.toInt()),
-                        color = AccentCyan,
-                        style = MaterialTheme.typography.labelMedium,
-                        fontSize = 14.sp,
-                    )
-                }
-                if (recommendedDays > 0) {
-                    Text(
-                        stringResource(R.string.detail_recommended_days, stringResource(headTechTitleRes(effectiveTech)), recommendedDays),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextMuted,
-                    )
-                }
-                Slider(
-                    value = daysFloat,
-                    onValueChange = { daysFloat = it },
-                    valueRange = 1f..14f,
-                    steps = 12,
-                    colors = SliderDefaults.colors(
-                        thumbColor = AccentCyan,
-                        activeTrackColor = AccentCyan,
-                        inactiveTrackColor = CardBorder,
-                    ),
-                )
-            }
-
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                Button(
-                    onClick = {
-                        viewModel.updatePrinterById(
-                            printerId = profile.id,
-                            host = hostInput,
-                            port = portInput.toIntOrNull() ?: 631,
-                            useTls = useTls,
-                            thresholdDays = daysFloat.toInt(),
-                            autoPurgeEnabled = autoPurge && hasAutoPurgeAccess,
-                            preferredFormat = preferredFormat,
-                            mediaType = mediaType,
-                            inkProfile = inkProfile,
-                            locationId = locationId,
+                        Text(
+                            "${stringResource(headTechTitleRes(effectiveTech))} • ${stringResource(silhouetteTitleRes(heroSilhouette))}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextMuted,
                         )
-                    },
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.weight(1f).height(44.dp),
-                ) {
-                    Text(stringResource(R.string.save), fontWeight = FontWeight.SemiBold)
+                    }
+                    when {
+                        effectiveKind == PrinterKind.LASER -> StatusBadge(stringResource(R.string.badge_laser), StatusAmber)
+                        st?.online == true -> StatusBadge(stringResource(R.string.badge_online), StatusGreen)
+                        st?.online == false -> StatusBadge(stringResource(R.string.badge_offline), StatusRed)
+                    }
                 }
-                OutlinedButton(
-                    onClick = { viewModel.refreshStatus(profile.id, runDormancyCheck = true) },
-                    enabled = !ui.isBusy,
-                    shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, CardBorder),
-                    modifier = Modifier.weight(1f).height(44.dp),
-                ) {
-                    Text(stringResource(R.string.detail_verify_now), maxLines = 1, softWrap = false)
+
+                if (st == null) {
+                    Text(stringResource(R.string.home_never_checked), style = MaterialTheme.typography.bodySmall, color = TextMuted)
+                    OutlinedButton(
+                        onClick = { viewModel.refreshStatus(profile.id, runDormancyCheck = false) },
+                        enabled = !ui.isBusy && cfg.printerHost.isNotBlank(),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth().height(42.dp),
+                    ) {
+                        Icon(Icons.Filled.Search, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.size(6.dp))
+                        Text(stringResource(R.string.detail_verify_now))
+                    }
+                } else {
+                    if (st.isMediaEmpty) {
+                        Text(stringResource(R.string.detail_media_empty), color = StatusRed, style = MaterialTheme.typography.bodySmall)
+                    }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        StatPill(stringResource(R.string.detail_counters_bw), st.monochromePages?.toString() ?: "—", Modifier.weight(1f))
+                        StatPill(stringResource(R.string.detail_counters_color), st.colorPages?.toString() ?: "—", Modifier.weight(1f))
+                        StatPill(stringResource(R.string.detail_counters_total), st.totalPages?.toString() ?: "—", Modifier.weight(1f))
+                    }
+                    if (st.markers.isNotEmpty()) {
+                        val chunks = st.markers.chunked(2)
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            chunks.forEach { rowMarkers ->
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    rowMarkers.forEach { marker ->
+                                        InkTankBar(marker, modifier = Modifier.weight(1f))
+                                    }
+                                    if (rowMarkers.size == 1) {
+                                        Spacer(modifier = Modifier.weight(1f))
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
-            OutlinedButton(
-                onClick = onOpenScannerTab,
-                shape = RoundedCornerShape(12.dp),
-                border = BorderStroke(1.dp, AccentCyan.copy(alpha = 0.4f)),
-                modifier = Modifier.fillMaxWidth().height(42.dp),
-            ) {
-                Icon(Icons.Filled.CameraAlt, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(6.dp))
-                Text(stringResource(R.string.detail_open_scanner), color = AccentCyan, fontSize = 13.sp, maxLines = 1)
+            if (effectiveKind == PrinterKind.LASER) {
+                ModernCard(borderColor = StatusAmber.copy(alpha = 0.45f), containerColor = StatusAmber.copy(alpha = 0.08f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Icon(Icons.Filled.Info, contentDescription = null, tint = StatusAmber, modifier = Modifier.size(20.dp))
+                        Text(stringResource(R.string.detail_laser_title), style = MaterialTheme.typography.titleSmall, color = StatusAmber)
+                    }
+                    Text(
+                        stringResource(R.string.detail_laser_body, st?.makeAndModel ?: profile.displayName),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextPrimary,
+                    )
+                }
+            } else {
+                ModernCard {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Icon(Icons.Filled.CleaningServices, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(18.dp))
+                        Text(stringResource(R.string.detail_purge_card_title), style = MaterialTheme.typography.titleSmall)
+                    }
+                    val canPurge = cfg.printerHost.isNotBlank() && !ui.isBusy
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        FilledTonalButton(
+                            onClick = { viewModel.triggerManualPurge(PurgeMode.K, profile.id) },
+                            enabled = canPurge,
+                            shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 8.dp),
+                            modifier = Modifier.weight(1f).height(46.dp),
+                        ) {
+                            Text(stringResource(R.string.detail_purge_k), maxLines = 1, softWrap = false, fontSize = 13.sp)
+                        }
+                        FilledTonalButton(
+                            onClick = { viewModel.triggerManualPurge(PurgeMode.CMY, profile.id) },
+                            enabled = canPurge,
+                            shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 8.dp),
+                            modifier = Modifier.weight(1f).height(46.dp),
+                        ) {
+                            Text(stringResource(R.string.detail_purge_color), maxLines = 1, softWrap = false, fontSize = 13.sp)
+                        }
+                        Button(
+                            onClick = { viewModel.triggerManualPurge(PurgeMode.CMYK, profile.id) },
+                            enabled = canPurge,
+                            shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 8.dp),
+                            modifier = Modifier.weight(1f).height(46.dp),
+                        ) {
+                            Text(stringResource(R.string.detail_purge_cmyk), maxLines = 1, softWrap = false, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                    val isSixTank = inkProfile == "cmyk6" || st?.inkProfile == "cmyk6" || (st?.tankCount ?: 4) >= 6
+                    if (isSixTank) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                            Button(
+                                onClick = { viewModel.triggerManualPurge(PurgeMode.CMYK6, profile.id) },
+                                enabled = canPurge,
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F766E), contentColor = Color.White),
+                                modifier = Modifier.weight(1f).height(44.dp),
+                            ) {
+                                Text(stringResource(R.string.detail_purge_6tank), maxLines = 1, softWrap = false, fontSize = 13.sp)
+                            }
+                            FilledTonalButton(
+                                onClick = { viewModel.triggerManualPurge(PurgeMode.PB_GY, profile.id) },
+                                enabled = canPurge,
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.weight(1f).height(44.dp),
+                            ) {
+                                Text(stringResource(R.string.detail_purge_pb_gy), maxLines = 1, softWrap = false, fontSize = 13.sp)
+                            }
+                        }
+                    }
+                }
             }
         }
-    }
 
-    // 3. Collapsible Technical Connection & Format Settings
-    ModernCard {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { showTechSettings = !showTechSettings },
-        ) {
-            Text(stringResource(R.string.detail_tech_settings_title), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-            Icon(
-                imageVector = if (showTechSettings) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                contentDescription = null,
-                tint = TextMuted,
+        // Sub-Tab 1: Scanner & Surgical Nozzles (inside this specific printer!)
+        1 -> {
+            PrinterScannerSection(profile = profile, ui = ui, viewModel = viewModel)
+        }
+
+        // Sub-Tab 2: Rules, Dormancy Threshold & Network Settings
+        else -> {
+            val hasAutoPurgeAccess = ui.entitlement.hasAccess(ProFeature.AUTO_PURGE)
+            val switchColors = SwitchDefaults.colors(
+                checkedThumbColor = BgDeep,
+                checkedTrackColor = AccentCyan,
+                uncheckedTrackColor = CardSurfaceAlt,
+                uncheckedBorderColor = CardBorder,
             )
-        }
+            val recommendedDays = PrinterClassification.recommendedThresholdDays(effectiveKind, effectiveTech, st?.tankCount ?: 4)
 
-        AnimatedVisibility(visible = showTechSettings) {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (effectiveKind != PrinterKind.LASER) {
+                ModernCard {
+                    Text(stringResource(R.string.detail_schedule_card_title), style = MaterialTheme.typography.titleSmall)
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(stringResource(R.string.detail_auto_purge_title), fontWeight = FontWeight.Medium)
+                                if (!hasAutoPurgeAccess) {
+                                    ProBadge(stringResource(R.string.badge_pro))
+                                }
+                            }
+                            Text(stringResource(R.string.detail_auto_purge_subtitle), style = MaterialTheme.typography.bodySmall, color = TextMuted)
+                        }
+                        Switch(
+                            checked = autoPurge && hasAutoPurgeAccess,
+                            onCheckedChange = { wantEnable ->
+                                if (wantEnable && !hasAutoPurgeAccess) {
+                                    viewModel.requestPaywall(ProFeature.AUTO_PURGE)
+                                } else {
+                                    autoPurge = wantEnable
+                                }
+                            },
+                            colors = switchColors,
+                        )
+                    }
+
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(stringResource(R.string.detail_inactivity_threshold), style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                stringResource(R.string.detail_days_unit, daysFloat.toInt()),
+                                color = AccentCyan,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontSize = 14.sp,
+                            )
+                        }
+                        if (recommendedDays > 0) {
+                            Text(
+                                stringResource(R.string.detail_recommended_days, stringResource(headTechTitleRes(effectiveTech)), recommendedDays),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextMuted,
+                            )
+                        }
+                        Slider(
+                            value = daysFloat,
+                            onValueChange = { daysFloat = it },
+                            valueRange = 1f..14f,
+                            steps = 12,
+                            colors = SliderDefaults.colors(
+                                thumbColor = AccentCyan,
+                                activeTrackColor = AccentCyan,
+                                inactiveTrackColor = CardBorder,
+                            ),
+                        )
+                    }
+                }
+            }
+
+            ModernCard {
+                Text(stringResource(R.string.detail_tech_settings_title), style = MaterialTheme.typography.titleSmall)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     NgTextField(
                         value = hostInput,
@@ -453,7 +439,7 @@ fun PrinterDetailScreen(
                 }
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                     Text(stringResource(R.string.detail_ipps_tls), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                    Switch(checked = useTls, onCheckedChange = { useTls = it })
+                    Switch(checked = useTls, onCheckedChange = { useTls = it }, colors = switchColors)
                 }
 
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -506,7 +492,7 @@ fun PrinterDetailScreen(
                             port = portInput.toIntOrNull() ?: 631,
                             useTls = useTls,
                             thresholdDays = daysFloat.toInt(),
-                            autoPurgeEnabled = autoPurge && ui.entitlement.hasAccess(ProFeature.AUTO_PURGE),
+                            autoPurgeEnabled = autoPurge && hasAutoPurgeAccess,
                             preferredFormat = preferredFormat,
                             mediaType = mediaType,
                             inkProfile = inkProfile,
@@ -514,9 +500,9 @@ fun PrinterDetailScreen(
                         )
                     },
                     shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth().height(44.dp),
+                    modifier = Modifier.fillMaxWidth().height(46.dp),
                 ) {
-                    Text(stringResource(R.string.save))
+                    Text(stringResource(R.string.save), fontWeight = FontWeight.SemiBold)
                 }
             }
         }

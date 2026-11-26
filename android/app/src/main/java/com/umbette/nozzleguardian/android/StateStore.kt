@@ -116,6 +116,7 @@ class StateStore(private val context: Context) {
         signedIn = prefs.getBoolean("account_signed_in", false),
         email = prefs.getString("account_email", "") ?: "",
         displayName = prefs.getString("account_display_name", "") ?: "",
+        pairingToken = prefs.getString("account_pairing_token", "") ?: "",
         syncServerUrl = prefs.getString("account_sync_url", "") ?: "",
         lastSyncedIso = prefs.getString("account_last_synced_iso", null),
     )
@@ -125,6 +126,7 @@ class StateStore(private val context: Context) {
             putBoolean("account_signed_in", account.signedIn)
             putString("account_email", account.email.trim())
             putString("account_display_name", account.displayName.trim())
+            putString("account_pairing_token", account.pairingToken.trim())
             putString("account_sync_url", account.syncServerUrl.trim())
             putNullableString("account_last_synced_iso", account.lastSyncedIso)
             apply()
@@ -220,6 +222,8 @@ class StateStore(private val context: Context) {
                     put("name", loc.name)
                     put("wifiSsid", loc.wifiSsid)
                     put("iconKey", loc.iconKey)
+                    put("networkFingerprint", loc.networkFingerprint)
+                    put("networkLabel", loc.networkLabel)
                 }
             )
         }
@@ -252,9 +256,11 @@ class StateStore(private val context: Context) {
             locations.add(
                 LocationGroup(
                     id = o.optString("id", "loc_$i"),
-                    name = o.optString("name", "Casa"),
+                    name = o.optString("name", "Home"),
                     wifiSsid = o.optString("wifiSsid", ""),
                     iconKey = o.optString("iconKey", "home"),
+                    networkFingerprint = o.optString("networkFingerprint", ""),
+                    networkLabel = o.optString("networkLabel", ""),
                 )
             )
         }

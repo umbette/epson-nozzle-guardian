@@ -67,6 +67,7 @@ data class MainUiState(
     val banner: UiBanner? = null,
     val paywallFeaturePrompt: ProFeature? = null,
     val laserNoticePrinterId: String? = null,
+    val currentDetectedLan: DetectedLanInfo? = null,
 ) {
     val activePrinter: PrinterProfile?
         get() = detailPrinterId?.let { id -> workspace.printers.firstOrNull { it.id == id } }
@@ -108,9 +109,42 @@ class NozzleGuardianViewModel(application: Application) : AndroidViewModel(appli
             }
         }
         billingManager.start()
+        refreshCurrentLan()
         PurgeCheckWorker.schedulePeriodic(application, initialWorkspace.printers.any { it.state.autoPurgeEnabled })
         if (initialWorkspace.activePrinter?.state?.printerHost?.isNotBlank() == true) {
             refreshStatus(printerId = initialWorkspace.activePrinter?.id, runDormancyCheck = false)
+        }
+    }
+
+    fun refreshCurrentLan() {
+        val detected = LocalNetworkDetector.detectCurrentWifiLan(getApplication())
+        _uiState.update { it.copy(currentDetectedLan = detected) }
+    }
+
+    fun bindLocationToCurrentWifi(locationId: String) {
+        val detected = LocalNetworkDetector.detectCurrentWifiLan(getApplication())
+        if (detected == null) {
+            _uiState.update {
+                it.copy(
+                    currentDetectedLan = null,
+                    banner = UiBanner(BannerSeverity.WARNING, R.string.banner_wifi_unavailable),
+                )
+            }
+            return
+        }
+        val nextWs = WorkspaceEngine.bindLocationNetwork(
+            store.loadWorkspace(),
+            locationId = locationId,
+            networkFingerprint = detected.fingerprint,
+            networkLabel = detected.label,
+        )
+        store.saveWorkspace(nextWs)
+        _uiState.update {
+            it.copy(
+                workspace = nextWs,
+                currentDetectedLan = detected,
+                banner = UiBanner(BannerSeverity.SUCCESS, R.string.banner_wifi_bound, listOf(detected.label)),
+            )
         }
     }
 
@@ -329,7 +363,12 @@ class NozzleGuardianViewModel(application: Application) : AndroidViewModel(appli
                 inactivityThresholdDays = suggestedDays,
             ),
         )
-        val nextWs = WorkspaceEngine.upsertPrinter(ws, profile, setActive = true)
+        var nextWs = WorkspaceEngine.upsertPrinter(ws, profile, setActive = true)
+        val loc = nextWs.locations.firstOrNull { it.id == locationId }
+        val detectedLan = LocalNetworkDetector.detectCurrentWifiLan(getApplication())
+        if (loc != null && loc.networkFingerprint.isBlank() && loc.wifiSsid.isBlank() && detectedLan != null) {
+            nextWs = WorkspaceEngine.bindLocationNetwork(nextWs, locationId, detectedLan.fingerprint, detectedLan.label)
+        }
         store.saveWorkspace(nextWs)
         _uiState.update {
             it.copy(
@@ -503,9 +542,10 @@ class NozzleGuardianViewModel(application: Application) : AndroidViewModel(appli
         }
     }
 
-    fun triggerSurgicalPurge(channel: NozzleChannel, step: Int, bursts: Int = 5) {
+    fun triggerSurgicalPurge(channel: NozzleChannel, step: Int, bursts: Int = 5, printerId: String? = _uiState.value.activePrinter?.id) {
         viewModelScope.launch {
-            val target = _uiState.value.activePrinter
+            val ws = store.loadWorkspace()
+            val target = printerId?.let { id -> ws.printers.firstOrNull { it.id == id } } ?: ws.activePrinter
             val cfg = target?.state
             if (target == null || cfg == null || cfg.printerHost.isBlank()) {
                 _uiState.update { it.copy(banner = UiBanner(BannerSeverity.WARNING, R.string.banner_configure_first)) }
@@ -533,7 +573,7 @@ class NozzleGuardianViewModel(application: Application) : AndroidViewModel(appli
         }
     }
 
-    fun scanSheetUri(uri: Uri) {
+    fun scanSheetUri(uri: Uri, printerId: String? = _uiState.value.activePrinter?.id) {
         val ent = store.loadEntitlement()
         if (!ent.hasAccess(ProFeature.CAMERA_SCANNER)) {
             requestPaywall(ProFeature.CAMERA_SCANNER)
@@ -543,7 +583,8 @@ class NozzleGuardianViewModel(application: Application) : AndroidViewModel(appli
             val prevHealth = _uiState.value.scanReport?.overallHealthPct?.toInt()
             _uiState.update { it.copy(isBusy = true, banner = UiBanner(BannerSeverity.INFO, R.string.banner_scanning_sheet)) }
             val report = client.scanPhotoUri(uri)
-            val target = _uiState.value.activePrinter
+            val ws = store.loadWorkspace()
+            val target = printerId?.let { id -> ws.printers.firstOrNull { it.id == id } } ?: ws.activePrinter
             if (target != null) {
                 sendTelemetryIfOptIn(
                     profile = target,
@@ -619,12 +660,14 @@ class NozzleGuardianViewModel(application: Application) : AndroidViewModel(appli
         }
     }
 
-    fun saveAccountSession(email: String, displayName: String, syncServerUrl: String) {
+    fun saveAccountSession(email: String, displayName: String, pairingToken: String, syncServerUrl: String) {
         val cleanEmail = email.trim()
+        val cleanToken = pairingToken.trim()
         val acc = AccountSession(
-            signedIn = cleanEmail.isNotBlank(),
+            signedIn = cleanEmail.isNotBlank() || cleanToken.isNotBlank(),
             email = cleanEmail,
             displayName = displayName.trim().ifBlank { cleanEmail.substringBefore('@') },
+            pairingToken = cleanToken,
             syncServerUrl = syncServerUrl.trim().trimEnd('/'),
             lastSyncedIso = store.loadAccount().lastSyncedIso,
         )
@@ -635,7 +678,7 @@ class NozzleGuardianViewModel(application: Application) : AndroidViewModel(appli
                 banner = UiBanner(
                     severity = BannerSeverity.SUCCESS,
                     messageRes = R.string.banner_account_saved,
-                    formatArgs = listOf(acc.displayName.ifBlank { acc.email.ifBlank { "OK" } }),
+                    formatArgs = listOf(acc.displayName.ifBlank { acc.email.ifBlank { "Sync" } }),
                 ),
             )
         }

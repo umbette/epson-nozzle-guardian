@@ -106,6 +106,7 @@ data class AccountSession(
     val signedIn: Boolean = false,
     val email: String = "",
     val displayName: String = "",
+    val pairingToken: String = "",
     val syncServerUrl: String = "",
     val lastSyncedIso: String? = null,
 )
@@ -143,7 +144,9 @@ object SyncSnapshotCodec {
             sb.append("{\"id\":\"").append(esc(loc.id))
             sb.append("\",\"name\":\"").append(esc(loc.name))
             sb.append("\",\"wifiSsid\":\"").append(esc(loc.wifiSsid))
-            sb.append("\",\"iconKey\":\"").append(esc(loc.iconKey)).append("\"}")
+            sb.append("\",\"iconKey\":\"").append(esc(loc.iconKey))
+            sb.append("\",\"networkFingerprint\":\"").append(esc(loc.networkFingerprint))
+            sb.append("\",\"networkLabel\":\"").append(esc(loc.networkLabel)).append("\"}")
         }
         sb.append("],\"printers\":[")
         workspace.printers.forEachIndexed { idx, p ->

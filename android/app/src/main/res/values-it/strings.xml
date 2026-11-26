@@ -157,12 +157,23 @@
     <string name="telemetry_card_title">Aiutaci a Migliorare (Telemetria Opt-In)</string>
     <string name="telemetry_optin_body">Disattivata di default. Non raccogliamo MAI cosa stampi, foto, nomi file, IP, reti Wi-Fi o email: solo dati tecnici anonimi su modello stampante, frequenza ed esito degli spurghi.</string>
     <string name="telemetry_toggle_label">Condividi statistiche anonime di compatibilità</string>
-    <string name="telemetry_preview_btn">Vedi JSON di esempio</string>
-    <string name="telemetry_reset_id_btn">Rigenera ID Anonimo</string>
+    <string name="telemetry_preview_btn">Anteprima JSON</string>
+    <string name="telemetry_reset_id_btn">Reset ID</string>
     <string name="telemetry_preview_title">Dati Esatti Inviati (Zero PII)</string>
     <string name="telemetry_preview_note">Inviato solo se attivi esplicitamente lo switch qui sopra.</string>
     <string name="telemetry_status_on">Opt-In attivo (ID: %1$s…)</string>
     <string name="telemetry_status_off">Opt-Out attivo (Zero telemetria di rete)</string>
+
+    <string name="subtab_status_purge">Stato &amp; Spurgo</string>
+    <string name="subtab_scanner_nozzles">Scanner &amp; Ugelli</string>
+    <string name="subtab_rules_network">Regole &amp; Rete</string>
+    <string name="wifi_bind_current_btn">Associa Wi-Fi attuale</string>
+    <string name="wifi_bound_chip">Wi-Fi associato: %1$s</string>
+    <string name="wifi_unbound_hint">Nessuna rete collegata — associata in automatico quando aggiungi una stampante o con 1 tap qui (zero GPS).</string>
+    <string name="banner_wifi_bound">Luogo associato al Wi-Fi attuale (%1$s).</string>
+    <string name="banner_wifi_unavailable">Collegati prima a una rete Wi-Fi per associarla a questo luogo.</string>
+    <string name="account_pairing_label">Codice Pairing / Token Dispositivo (opzionale)</string>
+    <string name="account_no_google_note">Account autonomo: nessun accesso con Google, Apple o social esterni.</string>
 
     <string name="account_card_title">Account Opzionale &amp; Backup Sync</string>
     <string name="account_card_body">Nessun account richiesto per uso locale. Inserisci un profilo o URL self-hosted (es. porta 8086) solo se vuoi sincronizzare tra dispositivi.</string>
