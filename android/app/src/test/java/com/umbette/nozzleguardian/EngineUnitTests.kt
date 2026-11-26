@@ -37,11 +37,66 @@ class EngineUnitTests {
 
         val genLetter = PatternGenerator(dpi = 150, mediaName = "na_letter_8.5x11in")
         val surfCmyk = genLetter.buildPurgeSurface(PurgeMode.CMYK)
-        val encodedCmyk = PwgRasterEncoder.encode(surfCmyk, dpi = 150, mediaName = genLetter.mediaName)
+        val encodedCmyk = PwgRasterEncoder.encode(surfCmyk, dpi = 150, mediaName = genLetter.mediaName, mediaType = "photographic-glossy")
         val decodedCmyk = PwgRasterEncoder.decode(encodedCmyk)
         assertEquals(24, decodedCmyk.bitsPerPixel)
         assertEquals(surfCmyk.width, decodedCmyk.width)
         assertEquals(surfCmyk.height, decodedCmyk.height)
+        assertEquals("PhotographicGlossy", decodedCmyk.mediaType)
+        assertEquals("na_letter_8.5x11in", decodedCmyk.mediaSizeName)
+    }
+
+    @Test
+    fun et4810NegotiationAndEt8550SixTankSupport() {
+        assertEquals(300, IppCodec.negotiatePwgDpi(listOf(300, 600), 360))
+        assertTrue(IppCodec.negotiatePwgForceRgb("k", listOf("srgb_8")))
+        assertEquals("color", IppCodec.negotiateColorMode("k", listOf("monochrome", "color"), forceRgb = true))
+        assertEquals(
+            "photographic-glossy",
+            IppCodec.negotiateMediaType("pb_gy", "auto", listOf("stationery", "photographic-glossy")),
+        )
+
+        val gen = PatternGenerator(dpi = 150)
+        val surf6 = gen.buildPurgeSurface(PurgeMode.CMYK6)
+        assertFalse(surf6.isGrayscale)
+        val surfPbGy = gen.buildPurgeSurface(PurgeMode.PB_GY)
+        assertFalse(surfPbGy.isGrayscale)
+        val surgPb = gen.buildSurgicalSheet(NozzleChannel.PHOTO_BLACK, step = 2)
+        assertFalse(surgPb.surface.isGrayscale)
+        val surgGy = gen.buildSurgicalSheet(NozzleChannel.GRAY, step = 4)
+        assertFalse(surgGy.surface.isGrayscale)
+
+        val markers8550 = listOf(
+            com.umbette.nozzleguardian.engine.MarkerSupply("MB", 90),
+            com.umbette.nozzleguardian.engine.MarkerSupply("PB", 85),
+            com.umbette.nozzleguardian.engine.MarkerSupply("C", 80),
+            com.umbette.nozzleguardian.engine.MarkerSupply("M", 75),
+            com.umbette.nozzleguardian.engine.MarkerSupply("Y", 70),
+            com.umbette.nozzleguardian.engine.MarkerSupply("GY", 88),
+        )
+        val (tanks, profile) = IppCodec.detectInkProfile("EPSON ET-8550 Series", markers8550)
+        assertEquals(6, tanks)
+        assertEquals("cmyk6", profile)
+
+        val now = Instant.parse("2026-11-26T09:00:00Z")
+        val old = now.minus(8, ChronoUnit.DAYS).toString()
+        val st8550 = PrinterStatus(
+            online = true,
+            totalPages = 120,
+            state = "idle",
+            makeAndModel = "EPSON ET-8550 Series",
+            tankCount = 6,
+            inkProfile = "cmyk6",
+        )
+        val base = GuardianState(
+            printerHost = "192.168.1.85",
+            inactivityThresholdDays = 5,
+            autoPurgeEnabled = true,
+            lastTotalPages = 120,
+            lastTotalActivityIso = old,
+        )
+        val decision = DormancyEngine.evaluate(base, st8550, now)
+        assertEquals(PurgeMode.CMYK6, decision.recommendedPurgeMode)
     }
 
     @Test

@@ -26,7 +26,9 @@ class PatternGenerator(
     fun ladderY0(mode: PurgeMode): Int = when (mode) {
         PurgeMode.K -> computeLadderY(1)
         PurgeMode.CMY -> computeLadderY(3)
+        PurgeMode.PB_GY -> computeLadderY(3)
         PurgeMode.CMYK -> computeLadderY(4)
+        PurgeMode.CMYK6 -> computeLadderY(6)
     }
 
     private fun drawFiducial(surface: RasterSurface, x0: Int, y0: Int, argb: Int): Int {
@@ -135,16 +137,16 @@ class PatternGenerator(
         return topMarginPx + mm(6.5) + barsH + mm(5.5)
     }
 
-    fun buildPurgeSurface(mode: PurgeMode): RasterSurface {
+    fun buildPurgeSurface(mode: PurgeMode, forceRgb: Boolean = false): RasterSurface {
         val colH = mm(18.0)
         val x0 = sideMarginPx
         val x1 = x0 + stripeWidthPx
-        val badgeW = mm(6.0)
+        val badgeW = mm(if (mode == PurgeMode.CMYK6 || mode == PurgeMode.PB_GY) 7.5 else 6.0)
         val hdrScale = maxOf(2, mm(0.42))
         val fidSz = maxOf(8, mm(2.8))
 
         if (mode == PurgeMode.K) {
-            val surface = RasterSurface(widthPx, heightPx, isGrayscale = true)
+            val surface = RasterSurface(widthPx, heightPx, isGrayscale = !forceRgb)
             val black = 0xFF000000.toInt()
             var yCursor = topMarginPx
             drawText(surface, x0 + mm(5.0), yCursor, "NOZZLE GUARDIAN K 1-10", hdrScale, black)
@@ -164,12 +166,34 @@ class PatternGenerator(
             return surface
         }
 
-        val channels = if (mode == PurgeMode.CMYK) {
-            listOf(NozzleChannel.CYAN, NozzleChannel.MAGENTA, NozzleChannel.YELLOW, NozzleChannel.BLACK)
-        } else {
-            listOf(NozzleChannel.CYAN, NozzleChannel.MAGENTA, NozzleChannel.YELLOW)
+        val stripeSpecs: List<Triple<String, Int, Boolean>> = when (mode) {
+            PurgeMode.CMY -> listOf(
+                Triple("C", NozzleChannel.CYAN.argb, false),
+                Triple("M", NozzleChannel.MAGENTA.argb, false),
+                Triple("Y", NozzleChannel.YELLOW.argb, false),
+            )
+            PurgeMode.CMYK -> listOf(
+                Triple("C", NozzleChannel.CYAN.argb, false),
+                Triple("M", NozzleChannel.MAGENTA.argb, false),
+                Triple("Y", NozzleChannel.YELLOW.argb, false),
+                Triple("K", NozzleChannel.BLACK.argb, false),
+            )
+            PurgeMode.CMYK6 -> listOf(
+                Triple("C", NozzleChannel.CYAN.argb, false),
+                Triple("M", NozzleChannel.MAGENTA.argb, false),
+                Triple("Y", NozzleChannel.YELLOW.argb, false),
+                Triple("BK", NozzleChannel.BLACK.argb, false),
+                Triple("PB", NozzleChannel.PHOTO_BLACK.argb, false),
+                Triple("GY", NozzleChannel.GRAY.argb, false),
+            )
+            PurgeMode.PB_GY -> listOf(
+                Triple("PB", NozzleChannel.PHOTO_BLACK.argb, false),
+                Triple("GY", NozzleChannel.GRAY.argb, false),
+                Triple("LG", 0xFFB6B6B6.toInt(), true),
+            )
+            PurgeMode.K -> emptyList()
         }
-        val includeBlack = mode == PurgeMode.CMYK
+        val includeBlack = mode != PurgeMode.CMY
         val surface = RasterSurface(widthPx, heightPx, isGrayscale = false)
         val hdrArgb = if (includeBlack) 0xFF373737.toInt() else NozzleChannel.MAGENTA.argb
         val fidArgb = if (includeBlack) NozzleChannel.BLACK.argb else NozzleChannel.MAGENTA.argb
@@ -178,14 +202,14 @@ class PatternGenerator(
         drawText(surface, x0 + mm(5.0), yCursor, "NOZZLE GUARDIAN ${mode.name} 1-10", hdrScale, hdrArgb)
         yCursor += mm(6.5)
 
-        for (ch in channels) {
-            val lblColor = if (includeBlack && ch == NozzleChannel.YELLOW) 0xFF373737.toInt() else ch.argb
-            drawText(surface, x0, yCursor, ch.name.take(1), hdrScale, lblColor)
-            surface.fillRect(x0 + badgeW, yCursor, x1, yCursor + stripeHeightPx, ch.argb)
+        for ((shortCode, colorArgb, isLight) in stripeSpecs) {
+            val lblColor = if (includeBlack && (shortCode == "Y" || isLight)) 0xFF373737.toInt() else colorArgb
+            drawText(surface, x0, yCursor, shortCode, hdrScale, lblColor)
+            surface.fillRect(x0 + badgeW, yCursor, x1, yCursor + stripeHeightPx, colorArgb)
             yCursor += stripeHeightPx + stripeSpacingPx
         }
 
-        val ladderY0 = computeLadderY(channels.size)
+        val ladderY0 = computeLadderY(stripeSpecs.size)
         drawFiducial(surface, x0, ladderY0, fidArgb)
         drawFiducial(surface, x1 - fidSz, ladderY0, fidArgb)
         drawFiducial(surface, x0, ladderY0 + colH - fidSz, fidArgb)
@@ -193,17 +217,17 @@ class PatternGenerator(
 
         val matrixX0 = x0 + badgeW
         val matrixW = stripeWidthPx - badgeW - fidSz - mm(1.5)
-        val gapPx = mm(4.0)
-        val colW = (matrixW - (channels.size - 1) * gapPx) / channels.size
+        val gapPx = mm(if (stripeSpecs.size >= 6) 2.8 else 4.0)
+        val colW = (matrixW - (stripeSpecs.size - 1) * gapPx) / stripeSpecs.size
 
-        channels.forEachIndexed { idx, ch ->
+        stripeSpecs.forEachIndexed { idx, (shortCode, colorArgb, _) ->
             val colX = matrixX0 + idx * (colW + gapPx)
-            val diagArgb = if (ch == NozzleChannel.YELLOW) {
+            val diagArgb = if (shortCode == "Y") {
                 if (includeBlack) 0xFF373737.toInt() else 0xFFD26E00.toInt()
             } else {
-                ch.argb
+                colorArgb
             }
-            drawLadderPattern(surface, colX, ladderY0, colW, colH, ch.argb, diagLabelArgb = diagArgb)
+            drawLadderPattern(surface, colX, ladderY0, colW, colH, colorArgb, diagLabelArgb = diagArgb)
         }
         return surface
     }
@@ -218,6 +242,7 @@ class PatternGenerator(
         step: Int,
         requestedBursts: Int = 5,
         headTechnology: HeadTechnology = HeadTechnology.PIEZO,
+        forceRgb: Boolean = false,
     ): SurgicalSheetResult {
         val clampedStep = step.coerceIn(1, 10)
         val rawBursts = requestedBursts.coerceIn(1, 9)
@@ -232,7 +257,7 @@ class PatternGenerator(
 
         val x0 = sideMarginPx
         val x1 = x0 + stripeWidthPx
-        val surface = RasterSurface(widthPx, heightPx, isGrayscale = (channel == NozzleChannel.BLACK))
+        val surface = RasterSurface(widthPx, heightPx, isGrayscale = (channel == NozzleChannel.BLACK && !forceRgb))
         val hdrScale = maxOf(2, mm(0.36))
         drawText(
             surface,
@@ -268,13 +293,16 @@ class PatternGenerator(
             'C' to intArrayOf(0b01110, 0b10001, 0b10000, 0b10000, 0b10000, 0b10001, 0b01110),
             'D' to intArrayOf(0b11110, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b11110),
             'E' to intArrayOf(0b11111, 0b10000, 0b10000, 0b11110, 0b10000, 0b10000, 0b11111),
+            'F' to intArrayOf(0b11111, 0b10000, 0b10000, 0b11110, 0b10000, 0b10000, 0b10000),
             'G' to intArrayOf(0b01110, 0b10001, 0b10000, 0b10111, 0b10001, 0b10001, 0b01110),
+            'H' to intArrayOf(0b10001, 0b10001, 0b10001, 0b11111, 0b10001, 0b10001, 0b10001),
             'I' to intArrayOf(0b01110, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0b01110),
             'K' to intArrayOf(0b10001, 0b10010, 0b10100, 0b11000, 0b10100, 0b10010, 0b10001),
             'L' to intArrayOf(0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0b11111),
             'M' to intArrayOf(0b10001, 0b11011, 0b10101, 0b10101, 0b10001, 0b10001, 0b10001),
             'N' to intArrayOf(0b10001, 0b11001, 0b10101, 0b10011, 0b10001, 0b10001, 0b10001),
             'O' to intArrayOf(0b01110, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b01110),
+            'P' to intArrayOf(0b11110, 0b10001, 0b10001, 0b11110, 0b10000, 0b10000, 0b10000),
             'R' to intArrayOf(0b11110, 0b10001, 0b10001, 0b11110, 0b10100, 0b10010, 0b10001),
             'S' to intArrayOf(0b01111, 0b10000, 0b10000, 0b01110, 0b00001, 0b00001, 0b11110),
             'T' to intArrayOf(0b11111, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100),

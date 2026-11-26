@@ -62,6 +62,8 @@ data class MediaSpec(
 
 data class DecodedPwgRaster(
     val mediaClass: String,
+    val mediaType: String,
+    val mediaSizeName: String,
     val dpiX: Int,
     val dpiY: Int,
     val width: Int,
@@ -77,6 +79,21 @@ object PwgRasterEncoder {
     private const val PWG_HEADER_SIZE = 1796
     const val CUPS_CSPACE_SGRAY = 18
     const val CUPS_CSPACE_SRGB = 19
+
+    private val PWG_MEDIA_TYPE_MAP = mapOf(
+        "auto" to "Stationery",
+        "stationery" to "Stationery",
+        "photographic" to "Photographic",
+        "photographic-glossy" to "PhotographicGlossy",
+        "photographic-matte" to "PhotographicMatte",
+        "photographic-semi-gloss" to "PhotographicSemiGloss",
+    )
+
+    fun pwgMediaTypeName(mediaType: String?): String {
+        if (mediaType.isNullOrBlank()) return "Stationery"
+        val key = mediaType.lowercase().trim()
+        return PWG_MEDIA_TYPE_MAP[key] ?: mediaType.trim().take(63).ifBlank { "Stationery" }
+    }
 
     val MEDIA_DIMENSIONS = mapOf(
         "iso_a4_210x297mm" to MediaSpec("iso_a4_210x297mm", 210.0, 297.0, 595, 842),
@@ -181,6 +198,7 @@ object PwgRasterEncoder {
         surface: RasterSurface,
         dpi: Int = 300,
         mediaName: String = "iso_a4_210x297mm",
+        mediaType: String = "Stationery",
     ): ByteArray {
         val bpp = if (surface.isGrayscale) 8 else 24
         val bppBytes = bpp / 8
@@ -191,7 +209,7 @@ object PwgRasterEncoder {
 
         val header = ByteArray(PWG_HEADER_SIZE)
         System.arraycopy(packCstr("PwgRaster", 64), 0, header, 0, 64)
-        System.arraycopy(packCstr("Stationery", 64), 0, header, 128, 64)
+        System.arraycopy(packCstr(pwgMediaTypeName(mediaType), 64), 0, header, 128, 64)
         putIntBE(header, 276, dpi)
         putIntBE(header, 280, dpi)
         putIntBE(header, 340, 1)
@@ -245,6 +263,12 @@ object PwgRasterEncoder {
         var nullPos = 0
         while (nullPos < 64 && hdr[nullPos].toInt() != 0) nullPos++
         val mediaClass = String(hdr, 0, nullPos, Charsets.US_ASCII)
+        var mtNull = 0
+        while (mtNull < 64 && hdr[128 + mtNull].toInt() != 0) mtNull++
+        val decodedMediaType = String(hdr, 128, mtNull, Charsets.US_ASCII)
+        var msNull = 0
+        while (msNull < 64 && hdr[1732 + msNull].toInt() != 0) msNull++
+        val decodedMediaSizeName = String(hdr, 1732, msNull, Charsets.US_ASCII)
         val dpiX = getIntBE(hdr, 276)
         val dpiY = getIntBE(hdr, 280)
         val width = getIntBE(hdr, 372)
@@ -284,6 +308,8 @@ object PwgRasterEncoder {
 
         return DecodedPwgRaster(
             mediaClass = mediaClass,
+            mediaType = decodedMediaType,
+            mediaSizeName = decodedMediaSizeName,
             dpiX = dpiX,
             dpiY = dpiY,
             width = width,

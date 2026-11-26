@@ -121,8 +121,9 @@ object DormancyEngine {
             )
         }
 
+        val useSixTank = currentState.inkProfile == "cmyk6" || (currentState.inkProfile == "auto" && status.inkProfile == "cmyk6")
         val recommendedMode = when {
-            (monoDormant && colorDormant) || totalDormant -> PurgeMode.CMYK
+            (monoDormant && colorDormant) || totalDormant -> if (useSixTank) PurgeMode.CMYK6 else PurgeMode.CMYK
             colorDormant -> PurgeMode.CMY
             monoDormant -> PurgeMode.K
             else -> null
@@ -166,8 +167,8 @@ object DormancyEngine {
         val nowIso = now.toString()
         return when (mode) {
             PurgeMode.K -> state.copy(lastMonoActivityIso = nowIso, lastMonoPurgeIso = nowIso)
-            PurgeMode.CMY -> state.copy(lastColorActivityIso = nowIso, lastColorPurgeIso = nowIso)
-            PurgeMode.CMYK -> state.copy(
+            PurgeMode.CMY, PurgeMode.PB_GY -> state.copy(lastColorActivityIso = nowIso, lastColorPurgeIso = nowIso)
+            PurgeMode.CMYK, PurgeMode.CMYK6 -> state.copy(
                 lastTotalActivityIso = nowIso,
                 lastMonoActivityIso = nowIso,
                 lastColorActivityIso = nowIso,

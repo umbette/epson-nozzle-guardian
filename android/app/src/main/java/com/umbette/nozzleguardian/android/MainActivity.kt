@@ -42,6 +42,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
@@ -181,6 +183,9 @@ private fun PrinterControlTab(ui: MainUiState, viewModel: NozzleGuardianViewMode
     var portInput by remember(ui.config.printerPort) { mutableStateOf(ui.config.printerPort.toString()) }
     var useTls by remember(ui.config.useTls) { mutableStateOf(ui.config.useTls) }
     var autoPurge by remember(ui.config.autoPurgeEnabled) { mutableStateOf(ui.config.autoPurgeEnabled) }
+    var preferredFormat by remember(ui.config.preferredFormat) { mutableStateOf(ui.config.preferredFormat) }
+    var mediaType by remember(ui.config.mediaType) { mutableStateOf(ui.config.mediaType) }
+    var inkProfile by remember(ui.config.inkProfile) { mutableStateOf(ui.config.inkProfile) }
     var daysFloat by remember(ui.config.inactivityThresholdDays) {
         mutableFloatStateOf(ui.config.inactivityThresholdDays.toFloat())
     }
@@ -249,6 +254,42 @@ private fun PrinterControlTab(ui: MainUiState, viewModel: NozzleGuardianViewMode
             Text("Soglia inattività: ${daysFloat.toInt()} giorni", style = MaterialTheme.typography.bodyMedium)
             Slider(value = daysFloat, onValueChange = { daysFloat = it }, valueRange = 1f..14f, steps = 12)
 
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                CompactSelector(
+                    label = "Formato",
+                    current = preferredFormat,
+                    options = listOf(
+                        "auto" to "Auto",
+                        "image/pwg-raster" to "PWG-Raster",
+                        "application/pdf" to "PDF",
+                        "image/jpeg" to "JPEG",
+                        "image/png" to "PNG",
+                    ),
+                    onSelect = { preferredFormat = it },
+                )
+                CompactSelector(
+                    label = "Carta",
+                    current = mediaType,
+                    options = listOf(
+                        "auto" to "Auto (Plain/BK)",
+                        "stationery" to "Plain (BK)",
+                        "photographic-glossy" to "Photo Glossy (PB+GY)",
+                        "photographic-matte" to "Photo Matte (PB+GY)",
+                    ),
+                    onSelect = { mediaType = it },
+                )
+                CompactSelector(
+                    label = "Serbatoi",
+                    current = inkProfile,
+                    options = listOf(
+                        "auto" to "Auto",
+                        "cmyk" to "4-Tank CMYK",
+                        "cmyk6" to "6-Tank Photo",
+                    ),
+                    onSelect = { inkProfile = it },
+                )
+            }
+
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 Button(
                     onClick = {
@@ -258,6 +299,9 @@ private fun PrinterControlTab(ui: MainUiState, viewModel: NozzleGuardianViewMode
                             useTls = useTls,
                             thresholdDays = daysFloat.toInt(),
                             autoPurgeEnabled = autoPurge,
+                            preferredFormat = preferredFormat,
+                            mediaType = mediaType,
+                            inkProfile = inkProfile,
                         )
                     },
                     modifier = Modifier.weight(1f),
@@ -320,6 +364,46 @@ private fun PrinterControlTab(ui: MainUiState, viewModel: NozzleGuardianViewMode
                 Button(onClick = { viewModel.triggerManualPurge(PurgeMode.CMYK) }, enabled = isInkjetOk, modifier = Modifier.weight(1f)) {
                     Text("Tutti")
                 }
+            }
+            val isSixTank = ui.config.inkProfile == "cmyk6" ||
+                ui.status?.inkProfile == "cmyk6" ||
+                (ui.status?.tankCount ?: 4) >= 6
+            if (isSixTank) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    Button(onClick = { viewModel.triggerManualPurge(PurgeMode.CMYK6) }, enabled = isInkjetOk, modifier = Modifier.weight(1f)) {
+                        Text("6-Tank Photo")
+                    }
+                    FilledTonalButton(onClick = { viewModel.triggerManualPurge(PurgeMode.PB_GY) }, enabled = isInkjetOk, modifier = Modifier.weight(1f)) {
+                        Text("PB + Gray")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CompactSelector(
+    label: String,
+    current: String,
+    options: List<Pair<String, String>>,
+    onSelect: (String) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val currentLabel = options.firstOrNull { it.first == current }?.second ?: current
+    Box {
+        OutlinedButton(onClick = { expanded = true }) {
+            Text("$label: $currentLabel", style = MaterialTheme.typography.labelSmall)
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            options.forEach { (value, title) ->
+                DropdownMenuItem(
+                    text = { Text(title) },
+                    onClick = {
+                        onSelect(value)
+                        expanded = false
+                    },
+                )
             }
         }
     }
@@ -395,7 +479,15 @@ private fun ScannerSurgicalTab(ui: MainUiState, viewModel: NozzleGuardianViewMod
             if (ui.status?.headTechnology == HeadTechnology.THERMAL) {
                 Text("Modalità Canon/HP Thermal BubbleJet attiva: impulsi limitati a ≤3 con passo termico sicuro (0.34 mm).", style = MaterialTheme.typography.bodySmall, color = Color(0xFF38BDF8))
             }
-            NozzleChannel.entries.forEach { channel ->
+            val isSixTankMatrix = ui.config.inkProfile == "cmyk6" ||
+                ui.status?.inkProfile == "cmyk6" ||
+                (ui.status?.tankCount ?: 4) >= 6
+            val visibleChannels = if (isSixTankMatrix) {
+                NozzleChannel.entries
+            } else {
+                listOf(NozzleChannel.CYAN, NozzleChannel.MAGENTA, NozzleChannel.YELLOW, NozzleChannel.BLACK)
+            }
+            visibleChannels.forEach { channel ->
                 Text(channel.displayName, fontWeight = FontWeight.Medium)
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
                     for (step in 1..10) {

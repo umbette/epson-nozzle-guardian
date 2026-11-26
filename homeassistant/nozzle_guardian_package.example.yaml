@@ -35,6 +35,20 @@ rest_command:
       X-API-Key: !secret nozzle_guardian_api_key
       Content-Type: "application/json"
 
+  nozzle_guardian_purge_cmyk6:
+    url: "http://127.0.0.1:8086/purge/cmyk6"
+    method: "POST"
+    headers:
+      X-API-Key: !secret nozzle_guardian_api_key
+      Content-Type: "application/json"
+
+  nozzle_guardian_purge_pb_gy:
+    url: "http://127.0.0.1:8086/purge/pb_gy"
+    method: "POST"
+    headers:
+      X-API-Key: !secret nozzle_guardian_api_key
+      Content-Type: "application/json"
+
 sensor:
   - platform: rest
     name: "Nozzle Guardian Status"
@@ -48,6 +62,9 @@ sensor:
       - make_and_model
       - printer_kind
       - head_technology
+      - tank_count
+      - ink_profile
+      - pwg_resolutions_supported
       - monochrome_pages
       - color_pages
       - total_pages

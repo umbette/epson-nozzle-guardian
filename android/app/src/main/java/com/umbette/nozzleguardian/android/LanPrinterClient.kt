@@ -234,6 +234,10 @@ class LanPrinterClient(private val context: Context, private val stateStore: Sta
             val supportedFormats = attrs?.stringList("document-format-supported").orEmpty()
             val mediaSupported = attrs?.stringList("media-supported").orEmpty()
             val mediaDefault = IppCodec.negotiateMedia(preferredMedia, attrs?.firstString("media-default"), mediaSupported)
+            val pwgResolutions = IppCodec.parsePwgResolutions(attrs?.attributes?.get("pwg-raster-document-resolution-supported"))
+            val pwgDocTypes = attrs?.stringList("pwg-raster-document-type-supported").orEmpty().map { it.lowercase() }
+            val printColorModes = attrs?.stringList("print-color-mode-supported").orEmpty().map { it.lowercase() }
+            val mediaTypes = attrs?.stringList("media-type-supported").orEmpty().map { it.lowercase() }
 
             val mono = ews?.monochromePages
             val color = ews?.colorPages
@@ -243,6 +247,10 @@ class LanPrinterClient(private val context: Context, private val stateStore: Sta
             val finalSnmp = if (total == null || markers.isEmpty()) snmp ?: SnmpCodec.queryPrinterTelemetry(host.trim(), timeoutMs = 1200) else snmp
             if (total == null && finalSnmp?.totalPages != null) total = finalSnmp.totalPages
             if (markers.isEmpty() && finalSnmp != null && finalSnmp.markers.isNotEmpty()) markers = finalSnmp.markers
+
+            val (detectedTanks, detectedProfile) = IppCodec.detectInkProfile(model, markers)
+            val effectiveProfile = if (state.inkProfile in listOf("cmyk", "cmyk6")) state.inkProfile else detectedProfile
+            val effectiveTanks = if (effectiveProfile == "cmyk6" && detectedTanks < 6) 6 else detectedTanks
 
             PrinterStatus(
                 online = true,
@@ -259,13 +267,25 @@ class LanPrinterClient(private val context: Context, private val stateStore: Sta
                 markers = markers,
                 endpointPath = ipp.path,
                 usedTls = ipp.useTls,
+                pwgResolutionsSupported = pwgResolutions,
+                pwgDocumentTypesSupported = pwgDocTypes,
+                printColorModesSupported = printColorModes,
+                mediaTypesSupported = mediaTypes,
+                tankCount = effectiveTanks,
+                inkProfile = effectiveProfile,
             )
         }
 
-    private fun encodeSurfaceForFormat(surface: RasterSurface, docFormat: String, dpi: Int, media: String): ByteArray {
+    private fun encodeSurfaceForFormat(
+        surface: RasterSurface,
+        docFormat: String,
+        dpi: Int,
+        media: String,
+        mediaType: String = "Stationery",
+    ): ByteArray {
         val fmt = docFormat.lowercase().trim()
         if (fmt == "image/pwg-raster") {
-            return PwgRasterEncoder.encode(surface, dpi = dpi, mediaName = media)
+            return PwgRasterEncoder.encode(surface, dpi = dpi, mediaName = media, mediaType = mediaType)
         }
 
         val bmp = Bitmap.createBitmap(surface.pixels, surface.width, surface.height, Bitmap.Config.ARGB_8888)
@@ -298,7 +318,8 @@ class LanPrinterClient(private val context: Context, private val stateStore: Sta
 
     suspend fun dispatchPurge(host: String, port: Int, mode: PurgeMode, status: PrinterStatus? = null): PurgeOutcome =
         withContext(Dispatchers.IO) {
-            val st = status ?: getStatus(host, port, stateStore.loadState().useTls)
+            val state = stateStore.loadState()
+            val st = status ?: getStatus(host, port, state.useTls, state.mediaSize)
             if (!st.online) return@withContext PurgeOutcome(false, st.errorMessage ?: "Stampante offline.", mode.code)
             if (st.printerKind == PrinterKind.LASER) {
                 return@withContext PurgeOutcome(false, "Stampante Laser rilevata: spurgo bloccato per sicurezza.", mode.code)
@@ -307,11 +328,24 @@ class LanPrinterClient(private val context: Context, private val stateStore: Sta
                 return@withContext PurgeOutcome(false, "Vassoio carta vuoto (media-empty): inserisci un foglio.", mode.code)
             }
 
-            val docFormat = IppCodec.negotiateFormat(st.supportedFormats)
-            val gen = PatternGenerator(dpi = 300, mediaName = st.mediaDefault)
-            val surface = gen.buildPurgeSurface(mode)
-            val payload = encodeSurfaceForFormat(surface, docFormat, gen.dpi, st.mediaDefault)
-            submitIppJob(host, port, st, payload, docFormat, if (mode == PurgeMode.K) "monochrome" else "color", mode.code, 0)
+            val primaryFmt = IppCodec.negotiateFormat(st.supportedFormats, state.preferredFormat)
+            val formatsToTry = listOf(primaryFmt) + IppCodec.getFallbackFormats(primaryFmt, st.supportedFormats)
+            val negotiatedDpi = IppCodec.negotiatePwgDpi(st.pwgResolutionsSupported, 300)
+            val forceRgb = IppCodec.negotiatePwgForceRgb(mode.code, st.pwgDocumentTypesSupported)
+            val colorMode = IppCodec.negotiateColorMode(mode.code, st.printColorModesSupported, forceRgb)
+            val mediaType = IppCodec.negotiateMediaType(mode.code, state.mediaType, st.mediaTypesSupported)
+            val pwgMediaType = mediaType ?: "Stationery"
+
+            val gen = PatternGenerator(dpi = negotiatedDpi, mediaName = st.mediaDefault)
+            var lastOutcome = PurgeOutcome(false, "Nessun formato supportato riuscito.", mode.code)
+            for (docFormat in formatsToTry) {
+                val useRgbForPwg = (docFormat == "image/pwg-raster" && forceRgb)
+                val surface = gen.buildPurgeSurface(mode, forceRgb = useRgbForPwg)
+                val payload = encodeSurfaceForFormat(surface, docFormat, gen.dpi, st.mediaDefault, pwgMediaType)
+                lastOutcome = submitIppJob(host, port, st, payload, docFormat, colorMode, mode.code, 0, mediaType)
+                if (lastOutcome.success) return@withContext lastOutcome
+            }
+            lastOutcome
         }
 
     suspend fun dispatchSurgicalPurge(
@@ -322,7 +356,8 @@ class LanPrinterClient(private val context: Context, private val stateStore: Sta
         bursts: Int = 5,
         status: PrinterStatus? = null,
     ): PurgeOutcome = withContext(Dispatchers.IO) {
-        val st = status ?: getStatus(host, port, stateStore.loadState().useTls)
+        val state = stateStore.loadState()
+        val st = status ?: getStatus(host, port, state.useTls, state.mediaSize)
         if (!st.online) return@withContext PurgeOutcome(false, st.errorMessage ?: "Stampante offline.", "surgical")
         if (st.printerKind == PrinterKind.LASER) {
             return@withContext PurgeOutcome(false, "Stampante Laser rilevata: operazione non supportata.", "surgical")
@@ -331,12 +366,29 @@ class LanPrinterClient(private val context: Context, private val stateStore: Sta
             return@withContext PurgeOutcome(false, "Vassoio carta vuoto (media-empty): inserisci un foglio.", "surgical")
         }
 
-        val docFormat = IppCodec.negotiateFormat(st.supportedFormats)
-        val gen = PatternGenerator(dpi = 300, mediaName = st.mediaDefault)
-        val built = gen.buildSurgicalSheet(channel, step, bursts, st.headTechnology)
-        val payload = encodeSurfaceForFormat(built.surface, docFormat, gen.dpi, st.mediaDefault)
-        val colorMode = if (channel == NozzleChannel.BLACK) "monochrome" else "color"
-        submitIppJob(host, port, st, payload, docFormat, colorMode, "${channel.code}#$step", built.effectiveBursts)
+        val primaryFmt = IppCodec.negotiateFormat(st.supportedFormats, state.preferredFormat)
+        val formatsToTry = listOf(primaryFmt) + IppCodec.getFallbackFormats(primaryFmt, st.supportedFormats)
+        val negotiatedDpi = IppCodec.negotiatePwgDpi(st.pwgResolutionsSupported, 300)
+        val modeCode = when (channel) {
+            NozzleChannel.BLACK -> "k"
+            NozzleChannel.PHOTO_BLACK, NozzleChannel.GRAY -> "pb_gy"
+            else -> "color"
+        }
+        val forceRgb = IppCodec.negotiatePwgForceRgb(modeCode, st.pwgDocumentTypesSupported)
+        val colorMode = IppCodec.negotiateColorMode(modeCode, st.printColorModesSupported, forceRgb)
+        val mediaType = IppCodec.negotiateMediaType(modeCode, state.mediaType, st.mediaTypesSupported)
+        val pwgMediaType = mediaType ?: "Stationery"
+
+        val gen = PatternGenerator(dpi = negotiatedDpi, mediaName = st.mediaDefault)
+        var lastOutcome = PurgeOutcome(false, "Nessun formato supportato riuscito.", "${channel.code}#$step")
+        for (docFormat in formatsToTry) {
+            val useRgbForPwg = (docFormat == "image/pwg-raster" && forceRgb)
+            val built = gen.buildSurgicalSheet(channel, step, bursts, st.headTechnology, forceRgb = useRgbForPwg)
+            val payload = encodeSurfaceForFormat(built.surface, docFormat, gen.dpi, st.mediaDefault, pwgMediaType)
+            lastOutcome = submitIppJob(host, port, st, payload, docFormat, colorMode, "${channel.code}#$step", built.effectiveBursts, mediaType)
+            if (lastOutcome.success) return@withContext lastOutcome
+        }
+        lastOutcome
     }
 
     private fun submitIppJob(
@@ -348,6 +400,7 @@ class LanPrinterClient(private val context: Context, private val stateStore: Sta
         colorMode: String,
         modeLabel: String,
         effectiveBursts: Int,
+        mediaType: String? = null,
     ): PurgeOutcome {
         val state = stateStore.loadState()
         val httpScheme = if (st.usedTls) "https" else "http"
@@ -358,6 +411,7 @@ class LanPrinterClient(private val context: Context, private val stateStore: Sta
             docFormat = docFormat,
             media = st.mediaDefault,
             colorMode = colorMode,
+            mediaType = mediaType,
         )
         val body = header + payload
         val res = postIpp(host, port, httpScheme, st.endpointPath, body, state, 25000)

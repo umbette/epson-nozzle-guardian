@@ -14,6 +14,9 @@ class StateStore(context: Context) {
         useTls = prefs.getBoolean("use_tls", false),
         pinnedCertSha256 = prefs.getString("pinned_cert_sha256", null),
         mediaSize = prefs.getString("media_size", "auto") ?: "auto",
+        preferredFormat = prefs.getString("preferred_format", "auto") ?: "auto",
+        mediaType = prefs.getString("media_type", "auto") ?: "auto",
+        inkProfile = prefs.getString("ink_profile", "auto") ?: "auto",
         inactivityThresholdDays = prefs.getInt("inactivity_threshold_days", 5),
         autoPurgeEnabled = prefs.getBoolean("auto_purge_enabled", false),
         lastMonoPages = if (prefs.contains("last_mono_pages")) prefs.getInt("last_mono_pages", 0) else null,
@@ -36,6 +39,9 @@ class StateStore(context: Context) {
             putBoolean("use_tls", state.useTls)
             putNullableString("pinned_cert_sha256", state.pinnedCertSha256)
             putString("media_size", state.mediaSize)
+            putString("preferred_format", state.preferredFormat)
+            putString("media_type", state.mediaType)
+            putString("ink_profile", state.inkProfile)
             putInt("inactivity_threshold_days", state.inactivityThresholdDays.coerceIn(1, 30))
             putBoolean("auto_purge_enabled", state.autoPurgeEnabled)
             putNullableInt("last_mono_pages", state.lastMonoPages)

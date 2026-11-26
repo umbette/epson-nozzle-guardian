@@ -81,6 +81,9 @@ class NozzleGuardianViewModel(application: Application) : AndroidViewModel(appli
         useTls: Boolean,
         thresholdDays: Int,
         autoPurgeEnabled: Boolean,
+        preferredFormat: String = _uiState.value.config.preferredFormat,
+        mediaType: String = _uiState.value.config.mediaType,
+        inkProfile: String = _uiState.value.config.inkProfile,
     ) {
         val current = store.loadState()
         val pinReset = if (current.printerHost != host.trim()) null else current.pinnedCertSha256
@@ -89,6 +92,9 @@ class NozzleGuardianViewModel(application: Application) : AndroidViewModel(appli
             printerPort = port.coerceIn(1, 65535),
             useTls = useTls,
             pinnedCertSha256 = pinReset,
+            preferredFormat = preferredFormat,
+            mediaType = mediaType,
+            inkProfile = inkProfile,
             inactivityThresholdDays = thresholdDays.coerceIn(1, 30),
             autoPurgeEnabled = autoPurgeEnabled,
         )

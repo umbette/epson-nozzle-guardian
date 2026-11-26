@@ -35,8 +35,10 @@ object IppCodec {
     const val TAG_BOOLEAN = 0x22
     const val TAG_ENUM = 0x23
     const val TAG_RESOLUTION = 0x32
+    const val TAG_BEGIN_COLLECTION = 0x34
     const val TAG_TEXT_WITH_LANG = 0x35
     const val TAG_NAME_WITH_LANG = 0x36
+    const val TAG_END_COLLECTION = 0x37
     const val TAG_TEXT_WITHOUT_LANG = 0x41
     const val TAG_NAME_WITHOUT_LANG = 0x42
     const val TAG_KEYWORD = 0x44
@@ -44,6 +46,7 @@ object IppCodec {
     const val TAG_CHARSET = 0x47
     const val TAG_NATURAL_LANGUAGE = 0x48
     const val TAG_MIME_TYPE = 0x49
+    const val TAG_MEMBER_NAME = 0x4A
 
     val IPP_PATHS = listOf("/ipp/print", "/ipp/printer", "/ipp", "/")
 
@@ -63,8 +66,11 @@ object IppCodec {
         "document-format-supported",
         "media-supported",
         "media-default",
+        "media-type-supported",
         "color-supported",
+        "print-color-mode-supported",
         "pwg-raster-document-resolution-supported",
+        "pwg-raster-document-type-supported",
         "marker-names",
         "marker-levels",
         "marker-types",
@@ -127,6 +133,7 @@ object IppCodec {
         colorMode: String = "color",
         jobName: String = "Nozzle Guardian Purge",
         requestId: Int = 2,
+        mediaType: String? = null,
     ): ByteArray {
         val out = ByteArrayOutputStream(384)
         out.write(IPP_VERSION)
@@ -141,7 +148,16 @@ object IppCodec {
         encodeAttr(out, TAG_MIME_TYPE, "document-format", docFormat.toByteArray(Charsets.UTF_8))
 
         out.write(TAG_JOB_ATTRIBUTES)
-        encodeAttr(out, TAG_KEYWORD, "media", media.toByteArray(Charsets.UTF_8))
+        if (!mediaType.isNullOrBlank() && mediaType.lowercase().trim() != "auto") {
+            encodeAttr(out, TAG_BEGIN_COLLECTION, "media-col", ByteArray(0))
+            encodeAttr(out, TAG_MEMBER_NAME, "", "media-size-name".toByteArray(Charsets.UTF_8))
+            encodeAttr(out, TAG_KEYWORD, "", media.toByteArray(Charsets.UTF_8))
+            encodeAttr(out, TAG_MEMBER_NAME, "", "media-type".toByteArray(Charsets.UTF_8))
+            encodeAttr(out, TAG_KEYWORD, "", mediaType.trim().toByteArray(Charsets.UTF_8))
+            encodeAttr(out, TAG_END_COLLECTION, "", ByteArray(0))
+        } else {
+            encodeAttr(out, TAG_KEYWORD, "media", media.toByteArray(Charsets.UTF_8))
+        }
         encodeAttr(out, TAG_KEYWORD, "print-color-mode", colorMode.toByteArray(Charsets.UTF_8))
         encodeAttr(out, TAG_KEYWORD, "sides", "one-sided".toByteArray(Charsets.UTF_8))
         out.write(TAG_END_OF_ATTRIBUTES)
@@ -226,13 +242,100 @@ object IppCodec {
         return PrinterKind.INKJET to HeadTechnology.PIEZO
     }
 
-    fun negotiateFormat(supportedFormats: List<String>): String {
+    fun parsePwgResolutions(rawValues: List<Any>?): List<Int> {
+        val out = linkedSetOf<Int>()
+        rawValues.orEmpty().forEach { item ->
+            when (item) {
+                is IppResolution -> {
+                    val dpi = when (item.unit) {
+                        3 -> item.xDpi
+                        4 -> (item.xDpi * 2.54).toInt()
+                        else -> item.xDpi
+                    }
+                    if (dpi > 0) out.add(dpi)
+                }
+                is Int -> if (item > 0) out.add(item)
+            }
+        }
+        return out.sorted()
+    }
+
+    fun detectInkProfile(model: String, markers: List<MarkerSupply>): Pair<Int, String> {
+        val low = model.lowercase()
+        val sixTankModels = listOf("et-8550", "et-8500", "l8180", "l8160", "l8050", "l18050", "xp-15000", "xp-8700", "xp-8600", "xp-8500")
+        if (sixTankModels.any { it in low }) {
+            return maxOf(6, markers.size) to "cmyk6"
+        }
+        val inkMarkers = markers.filter {
+            "waste" !in it.type.lowercase() && "maintenance" !in it.name.lowercase()
+        }
+        val namesLow = inkMarkers.joinToString(" ") { it.name.lowercase() }
+        val hasPhotoGray = listOf("photo black", "gray", "grey", "pb", "gy", "matte black").any { it in namesLow }
+        if (inkMarkers.size >= 5 && (hasPhotoGray || inkMarkers.size >= 6)) {
+            return inkMarkers.size to "cmyk6"
+        }
+        return 4 to "cmyk"
+    }
+
+    fun negotiateFormat(supportedFormats: List<String>, preferredFormat: String = "auto"): String {
         val normalized = supportedFormats.map { it.lowercase().trim() }.toSet()
+        val pref = preferredFormat.lowercase().trim()
+        if (pref.isNotBlank() && pref != "auto") {
+            if (normalized.isEmpty() || pref in normalized) return pref
+        }
         if (normalized.isEmpty()) return "image/pwg-raster"
         for (candidate in FORMAT_PREFERENCE) {
             if (candidate in normalized) return candidate
         }
         return "image/png"
+    }
+
+    fun getFallbackFormats(primaryFormat: String, supportedFormats: List<String>): List<String> {
+        val primary = primaryFormat.lowercase().trim()
+        val normalized = supportedFormats.map { it.lowercase().trim() }.toSet()
+        return if (normalized.isNotEmpty()) {
+            FORMAT_PREFERENCE.filter { it != primary && it in normalized }
+        } else {
+            FORMAT_PREFERENCE.filter { it != primary }
+        }
+    }
+
+    fun negotiatePwgDpi(supportedResolutions: List<Int>, preferredDpi: Int = 300): Int {
+        val clean = supportedResolutions.filter { it > 0 }
+        if (clean.isEmpty()) return preferredDpi
+        if (preferredDpi in clean) return preferredDpi
+        for (candidate in listOf(300, 360, 600, 720, 180, 150, 200)) {
+            if (candidate in clean) return candidate
+        }
+        return clean.minByOrNull { kotlin.math.abs(it - preferredDpi) } ?: preferredDpi
+    }
+
+    fun negotiatePwgForceRgb(modeCode: String, pwgTypesSupported: List<String>): Boolean {
+        if (modeCode.lowercase().trim() !in listOf("k", "black", "bk")) return false
+        val types = pwgTypesSupported.map { it.lowercase().trim() }.toSet()
+        return types.isNotEmpty() && "sgray_8" !in types && "srgb_8" in types
+    }
+
+    fun negotiateColorMode(modeCode: String, printColorModesSupported: List<String>, forceRgb: Boolean = false): String {
+        val supported = printColorModesSupported.map { it.lowercase().trim() }.toSet()
+        if (modeCode.lowercase().trim() in listOf("k", "black", "bk") && !forceRgb) {
+            if (supported.isEmpty() || "monochrome" in supported) return "monochrome"
+        }
+        if (supported.isEmpty() || "color" in supported) return "color"
+        if ("auto" in supported) return "auto"
+        return supported.first()
+    }
+
+    fun negotiateMediaType(modeCode: String, preferredMediaType: String, mediaTypesSupported: List<String>): String? {
+        val pref = preferredMediaType.lowercase().trim()
+        if (pref.isNotBlank() && pref != "auto") return pref
+        if (modeCode.lowercase().trim() == "pb_gy") {
+            val supported = mediaTypesSupported.map { it.lowercase().trim() }
+            for (candidate in listOf("photographic-glossy", "photographic-semi-gloss", "photographic-matte", "photographic")) {
+                if (candidate in supported) return candidate
+            }
+        }
+        return null
     }
 
     fun negotiateMedia(

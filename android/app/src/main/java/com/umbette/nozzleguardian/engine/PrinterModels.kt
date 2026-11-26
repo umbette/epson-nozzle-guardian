@@ -15,13 +15,23 @@ enum class PurgeMode(val code: String) {
     K("k"),
     CMY("cmy"),
     CMYK("cmyk"),
+    CMYK6("cmyk6"),
+    PB_GY("pb_gy"),
+}
+
+enum class InkProfile(val code: String, val label: String) {
+    AUTO("auto", "Serbatoi: Auto"),
+    CMYK("cmyk", "4-Tank (CMYK)"),
+    CMYK6("cmyk6", "6-Tank Photo (CMY+BK+PB+GY)"),
 }
 
 enum class NozzleChannel(val code: String, val displayName: String, val argb: Int) {
     CYAN("cyan", "Ciano (C)", 0xFF00FFFF.toInt()),
     MAGENTA("magenta", "Magenta (M)", 0xFFFF00FF.toInt()),
     YELLOW("yellow", "Giallo (Y)", 0xFFFFFF00.toInt()),
-    BLACK("black", "Nero (K)", 0xFF000000.toInt()),
+    BLACK("black", "Nero (K/BK)", 0xFF000000.toInt()),
+    PHOTO_BLACK("photo_black", "Photo Black (PB)", 0xFF080808.toInt()),
+    GRAY("gray", "Gray (GY)", 0xFF808080.toInt()),
 }
 
 data class MarkerSupply(
@@ -47,6 +57,12 @@ data class PrinterStatus(
     val markers: List<MarkerSupply> = emptyList(),
     val endpointPath: String = "/ipp/print",
     val usedTls: Boolean = false,
+    val pwgResolutionsSupported: List<Int> = emptyList(),
+    val pwgDocumentTypesSupported: List<String> = emptyList(),
+    val printColorModesSupported: List<String> = emptyList(),
+    val mediaTypesSupported: List<String> = emptyList(),
+    val tankCount: Int = 4,
+    val inkProfile: String = "cmyk",
 ) {
     val isMediaEmpty: Boolean
         get() = stateReasons.any { it.contains("media-empty", ignoreCase = true) }
@@ -74,6 +90,9 @@ data class GuardianState(
     val useTls: Boolean = false,
     val pinnedCertSha256: String? = null,
     val mediaSize: String = "auto",
+    val preferredFormat: String = "auto",
+    val mediaType: String = "auto",
+    val inkProfile: String = "auto",
     val inactivityThresholdDays: Int = 5,
     val autoPurgeEnabled: Boolean = false,
     val lastMonoPages: Int? = null,
