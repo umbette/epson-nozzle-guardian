@@ -61,4 +61,11 @@
     <string name="account_no_google_note">Compte indépendant : aucune connexion Google requise.</string>
     <string name="account_card_title">Serveur Personnel &amp; Sauvegarde (Avancé)</string>
     <string name="account_cloud_note">Aucun compte requis pour utiliser l\'application ou Pro.</string>
+    <string name="ink_card_title">Niveaux d\'Encre</string>
+    <string name="ink_card_title_toner">Niveaux de Toner</string>
+    <string name="ink_low_badge">Encre faible</string>
+    <string name="toner_low_badge">Toner faible</string>
+    <string name="banner_low_ink">Encre faible sur %1$s : %2$s.</string>
+    <string name="notif_low_ink_title">Nozzle Guardian : Encre Faible</string>
+    <string name="notif_low_ink_body">%1$s bientôt vide : %2$s.</string>
 </resources>

@@ -113,4 +113,11 @@
     <string name="account_card_title">Servidor Personal y Copia (Avanzado)</string>
     <string name="account_card_body">Para usuarios Homelab/Docker: vincula tu servidor local o exporta el JSON de respaldo.</string>
     <string name="account_cloud_note">No se requiere cuenta para usar la app ni para Pro Lifetime.</string>
+    <string name="ink_card_title">Niveles de Tinta</string>
+    <string name="ink_card_title_toner">Niveles de Tóner</string>
+    <string name="ink_low_badge">Tinta baja</string>
+    <string name="toner_low_badge">Tóner bajo</string>
+    <string name="banner_low_ink">Tinta baja en %1$s: %2$s.</string>
+    <string name="notif_low_ink_title">Nozzle Guardian: Tinta Baja</string>
+    <string name="notif_low_ink_body">%1$s con poca tinta: %2$s.</string>
 </resources>

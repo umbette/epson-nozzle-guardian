@@ -24,6 +24,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Opacity
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
@@ -253,17 +254,43 @@ fun PrinterDetailScreen(
                     StatPill(stringResource(R.string.detail_counters_color), st.colorPages?.toString() ?: "—", Modifier.weight(1f))
                     StatPill(stringResource(R.string.detail_counters_total), st.totalPages?.toString() ?: "—", Modifier.weight(1f))
                 }
-                if (st.markers.isNotEmpty()) {
-                    val chunks = st.markers.chunked(2)
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        chunks.forEach { rowMarkers ->
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                rowMarkers.forEach { marker ->
-                                    InkTankBar(marker, modifier = Modifier.weight(1f))
-                                }
-                                if (rowMarkers.size == 1) {
-                                    Spacer(modifier = Modifier.weight(1f))
-                                }
+            }
+        }
+
+        val reliableInk = st?.reliableInkMarkers.orEmpty()
+        if (reliableInk.isNotEmpty()) {
+            ModernCard {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Filled.Opacity, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(18.dp))
+                    Text(
+                        text = stringResource(
+                            if (effectiveKind == PrinterKind.LASER) R.string.ink_card_title_toner else R.string.ink_card_title
+                        ),
+                        style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (st?.lowInkMarkers?.isNotEmpty() == true) {
+                        StatusBadge(
+                            label = stringResource(
+                                if (effectiveKind == PrinterKind.LASER) R.string.toner_low_badge else R.string.ink_low_badge
+                            ),
+                            color = StatusAmber,
+                        )
+                    }
+                }
+                val chunks = reliableInk.chunked(2)
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    chunks.forEach { rowMarkers ->
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            rowMarkers.forEach { marker ->
+                                InkTankBar(marker, modifier = Modifier.weight(1f))
+                            }
+                            if (rowMarkers.size == 1) {
+                                Spacer(modifier = Modifier.weight(1f))
                             }
                         }
                     }

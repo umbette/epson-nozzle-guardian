@@ -111,6 +111,16 @@ class PurgeCheckWorker(
                 }
             }
 
+            if (status.online && status.lowInkMarkers.isNotEmpty()) {
+                val lowText = status.lowInkMarkers.joinToString(", ") { "${it.name} (${it.level}%)" }
+                NotificationHelper.showAlert(
+                    applicationContext,
+                    applicationContext.getString(R.string.notif_low_ink_title),
+                    applicationContext.getString(R.string.notif_low_ink_body, updatedProfile.displayName, lowText),
+                    notificationId = 1300 + idx,
+                )
+            }
+
             updatedProfile = updatedProfile.copy(state = nextPrinterState)
             workspace = WorkspaceEngine.upsertPrinter(
                 workspace,

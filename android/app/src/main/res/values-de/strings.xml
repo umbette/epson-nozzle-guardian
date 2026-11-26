@@ -61,4 +61,11 @@
     <string name="account_no_google_note">Eigenständiges Konto: kein Google-Login nötig.</string>
     <string name="account_card_title">Eigener Server &amp; Backup (Erweitert)</string>
     <string name="account_cloud_note">Kein Konto für die Nutzung oder Lifetime Pro erforderlich.</string>
+    <string name="ink_card_title">Tintenstände</string>
+    <string name="ink_card_title_toner">Tonerstände</string>
+    <string name="ink_low_badge">Tinte niedrig</string>
+    <string name="toner_low_badge">Toner niedrig</string>
+    <string name="banner_low_ink">Niedriger Tintenstand bei %1$s: %2$s.</string>
+    <string name="notif_low_ink_title">Nozzle Guardian: Tinte Niedrig</string>
+    <string name="notif_low_ink_body">%1$s fast leer: %2$s.</string>
 </resources>

@@ -23,10 +23,15 @@ data class SnmpPrinterTelemetry(
  */
 object SnmpCodec {
     const val OID_PRT_MARKER_LIFE_COUNT_PREFIX = "1.3.6.1.2.1.43.10.2.1.4"
+    const val OID_PRT_MARKER_SUPPLIES_WALK_START = "1.3.6.1.2.1.43.11.1.1.5"
     const val OID_PRT_MARKER_SUPPLIES_START = "1.3.6.1.2.1.43.11.1.1.6"
+    const val OID_PRT_MARKER_SUPPLIES_TYPE = "1.3.6.1.2.1.43.11.1.1.5."
     const val OID_PRT_MARKER_SUPPLIES_DESC = "1.3.6.1.2.1.43.11.1.1.6."
+    const val OID_PRT_MARKER_SUPPLIES_UNIT = "1.3.6.1.2.1.43.11.1.1.7."
     const val OID_PRT_MARKER_SUPPLIES_MAX = "1.3.6.1.2.1.43.11.1.1.8."
     const val OID_PRT_MARKER_SUPPLIES_LEVEL = "1.3.6.1.2.1.43.11.1.1.9."
+
+    private const val SUPPLY_UNIT_PERCENT = 19
 
     const val SNMP_GET_REQUEST = 0xA0
     const val SNMP_GET_NEXT_REQUEST = 0xA1
@@ -213,14 +218,50 @@ object SnmpCodec {
     }
 
     fun inferMarkerColorHex(name: String): String {
-        val low = name.lowercase()
+        val low = name.lowercase().trim()
         return when {
-            "cyan" in low || "ciano" in low -> "#00b7eb"
-            "magenta" in low -> "#ff0090"
-            "yellow" in low || "giallo" in low -> "#ffd700"
-            "black" in low || "nero" in low || low.trim() == "bk" -> "#1a1a1a"
+            "light cyan" in low || low == "lc" -> "#67e8f9"
+            "light magenta" in low || low == "lm" -> "#f472b6"
+            "tri-color" in low || "tricolor" in low -> "#06b6d4"
+            "cyan" in low || "ciano" in low || low == "c" -> "#00b7eb"
+            "magenta" in low || low == "m" -> "#ff0090"
+            "yellow" in low || "giallo" in low || low == "y" -> "#ffd700"
+            "gray" in low || "grey" in low || "grigio" in low || low == "gy" -> "#94a3b8"
+            "photo black" in low || "nero foto" in low || low == "pb" -> "#111827"
+            "black" in low || "nero" in low || low == "bk" || low == "mb" || low == "k" -> "#1a1a1a"
             else -> ""
         }
+    }
+
+    fun mapSupplyType(code: Int?): String = when (code) {
+        3 -> "toner"
+        4 -> "waste-toner"
+        5 -> "ink"
+        6 -> "ink-cartridge"
+        9 -> "opc"
+        10 -> "developer"
+        14 -> "fuser"
+        15 -> "waste-ink"
+        20 -> "transfer-unit"
+        21 -> "ink-bottle"
+        22 -> "cleaner-unit"
+        else -> "ink"
+    }
+
+    /**
+     * Converts RFC 3805 raw level + maxCapacity + supplyUnit into 0..100%.
+     * Returns -2 when the printer does not provide reliable percentage bounds.
+     */
+    fun calculateReliablePercent(rawLevel: Int, maxCap: Int, supplyUnit: Int? = null): Int {
+        if (rawLevel < 0) return rawLevel
+        if (maxCap > 0) {
+            if (rawLevel > maxCap) return -2
+            return ((rawLevel.toLong() * 100L) / maxCap.toLong()).toInt().coerceIn(0, 100)
+        }
+        if (supplyUnit == SUPPLY_UNIT_PERCENT && rawLevel in 0..100) {
+            return rawLevel
+        }
+        return -2
     }
 
     fun queryPrinterTelemetry(
@@ -252,32 +293,44 @@ object SnmpCodec {
                 }
 
                 var reqId = 1
-                val life = exchange(OID_PRT_MARKER_LIFE_COUNT_PREFIX, reqId++) ?: return SnmpPrinterTelemetry()
+                val life = exchange(OID_PRT_MARKER_LIFE_COUNT_PREFIX, reqId++)
                 val totalPages = if (
+                    life != null &&
                     life.errorStatus == 0 &&
                     life.oid.startsWith("$OID_PRT_MARKER_LIFE_COUNT_PREFIX.") &&
                     life.value is Int &&
                     life.value >= 0
                 ) life.value else null
 
+                val supplyTypes = linkedMapOf<String, Int>()
                 val descs = linkedMapOf<String, String>()
+                val units = linkedMapOf<String, Int>()
                 val maxCaps = linkedMapOf<String, Int>()
                 val levels = linkedMapOf<String, Int>()
-                var curOid = OID_PRT_MARKER_SUPPLIES_START
-                repeat(48) {
-                    val nxt = exchange(curOid, reqId++) ?: return@repeat
-                    if (nxt.errorStatus != 0 || !nxt.oid.startsWith("1.3.6.1.2.1.43.11.1.1.")) return@repeat
+                var curOid = OID_PRT_MARKER_SUPPLIES_WALK_START
+                for (step in 0 until 64) {
+                    val nxt = exchange(curOid, reqId++) ?: break
+                    if (nxt.errorStatus != 0 || !nxt.oid.startsWith("1.3.6.1.2.1.43.11.1.1.")) break
                     val suffixCol = nxt.oid.removePrefix("1.3.6.1.2.1.43.11.1.1.").substringBefore('.').toIntOrNull()
-                    if (suffixCol == null || suffixCol > 9) return@repeat
+                    if (suffixCol == null || suffixCol > 9) break
                     when {
+                        nxt.oid.startsWith(OID_PRT_MARKER_SUPPLIES_TYPE) && nxt.value is Int ->
+                            supplyTypes[nxt.oid.removePrefix(OID_PRT_MARKER_SUPPLIES_TYPE)] = nxt.value
                         nxt.oid.startsWith(OID_PRT_MARKER_SUPPLIES_DESC) && nxt.value is String ->
                             descs[nxt.oid.removePrefix(OID_PRT_MARKER_SUPPLIES_DESC)] = nxt.value
+                        nxt.oid.startsWith(OID_PRT_MARKER_SUPPLIES_UNIT) && nxt.value is Int ->
+                            units[nxt.oid.removePrefix(OID_PRT_MARKER_SUPPLIES_UNIT)] = nxt.value
                         nxt.oid.startsWith(OID_PRT_MARKER_SUPPLIES_MAX) && nxt.value is Int ->
                             maxCaps[nxt.oid.removePrefix(OID_PRT_MARKER_SUPPLIES_MAX)] = nxt.value
                         nxt.oid.startsWith(OID_PRT_MARKER_SUPPLIES_LEVEL) && nxt.value is Int ->
                             levels[nxt.oid.removePrefix(OID_PRT_MARKER_SUPPLIES_LEVEL)] = nxt.value
                     }
+                    if (nxt.oid == curOid) break
                     curOid = nxt.oid
+                }
+
+                if (life == null && descs.isEmpty() && levels.isEmpty()) {
+                    return SnmpPrinterTelemetry()
                 }
 
                 val markers = descs.entries
@@ -285,15 +338,12 @@ object SnmpCodec {
                     .map { (idx, name) ->
                         val rawLvl = levels[idx] ?: -2
                         val maxCap = maxCaps[idx] ?: -2
-                        val pct = when {
-                            rawLvl >= 0 && maxCap > 0 -> minOf(100, (rawLvl * 100.0 / maxCap).toInt())
-                            rawLvl >= 0 && maxCap <= 0 -> if (rawLvl <= 100) minOf(100, rawLvl) else -2
-                            else -> rawLvl
-                        }
+                        val unit = units[idx]
+                        val pct = calculateReliablePercent(rawLvl, maxCap, unit)
                         MarkerSupply(
                             name = name,
                             level = pct,
-                            type = "ink",
+                            type = mapSupplyType(supplyTypes[idx]),
                             colorHex = inferMarkerColorHex(name),
                         )
                     }

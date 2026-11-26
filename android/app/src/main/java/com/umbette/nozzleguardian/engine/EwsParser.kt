@@ -107,4 +107,63 @@ object EwsParser {
             headTechnology = headTech,
         )
     }
+
+    private val HP_CONSUMABLE_BLOCK_REGEX = Regex(
+        "<(?:\\w+:)?ConsumableInfo\\b[^>]*>([\\s\\S]*?)</(?:\\w+:)?ConsumableInfo>",
+        RegexOption.IGNORE_CASE,
+    )
+    private val HP_LABEL_CODE_REGEX = Regex(
+        "<(?:\\w+:)?ConsumableLabelCode>([^<]+)</(?:\\w+:)?ConsumableLabelCode>",
+        RegexOption.IGNORE_CASE,
+    )
+    private val HP_TYPE_ENUM_REGEX = Regex(
+        "<(?:\\w+:)?ConsumableTypeEnum>([^<]+)</(?:\\w+:)?ConsumableTypeEnum>",
+        RegexOption.IGNORE_CASE,
+    )
+    private val HP_PCT_LEVEL_REGEX = Regex(
+        "<(?:\\w+:)?ConsumablePercentageLevelRemaining>(\\d{1,3})</(?:\\w+:)?ConsumablePercentageLevelRemaining>",
+        RegexOption.IGNORE_CASE,
+    )
+
+    /**
+     * Parses HP LEDM ConsumableConfigDyn.xml when explicit 0..100% remaining values are provided.
+     * Any consumable without an explicit 0..100 integer is skipped rather than guessed.
+     */
+    fun parseConsumablesXml(rawContent: String): List<MarkerSupply> {
+        if ("ConsumableInfo" !in rawContent && "ConsumableConfigDyn" !in rawContent) return emptyList()
+        val out = mutableListOf<MarkerSupply>()
+        for (blockMatch in HP_CONSUMABLE_BLOCK_REGEX.findAll(rawContent)) {
+            val block = blockMatch.groupValues[1]
+            val pct = HP_PCT_LEVEL_REGEX.find(block)?.groupValues?.get(1)?.toIntOrNull() ?: continue
+            if (pct !in 0..100) continue
+            val labelCode = HP_LABEL_CODE_REGEX.find(block)?.groupValues?.get(1)?.trim().orEmpty()
+            if (labelCode.isBlank()) continue
+            val typeRaw = HP_TYPE_ENUM_REGEX.find(block)?.groupValues?.get(1)?.trim()?.lowercase().orEmpty()
+            val friendlyName = when (labelCode.uppercase()) {
+                "K", "BK" -> "Black"
+                "C" -> "Cyan"
+                "M" -> "Magenta"
+                "Y" -> "Yellow"
+                "CMY" -> "Tri-Color"
+                "PB", "PK" -> "Photo Black"
+                "GY" -> "Gray"
+                else -> labelCode
+            }
+            val supplyType = when {
+                "toner" in typeRaw -> "toner"
+                "waste" in typeRaw -> "waste-ink"
+                "ink" in typeRaw -> "ink"
+                else -> "ink"
+            }
+            out.add(
+                MarkerSupply(
+                    name = friendlyName,
+                    level = pct,
+                    type = supplyType,
+                    colorHex = SnmpCodec.inferMarkerColorHex(friendlyName),
+                ),
+            )
+        }
+        return out
+    }
 }

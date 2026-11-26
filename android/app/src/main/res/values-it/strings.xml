@@ -241,4 +241,12 @@
     <string name="notif_purge_ok_title">Nozzle Guardian: Auto-spurgo Completato</string>
     <string name="notif_dormant_free_title">Nozzle Guardian: Stampante Inattiva</string>
     <string name="notif_dormant_free_body">%1$s inattiva (%2$s): tocca per uno spurgo manuale o sblocca Pro Lifetime per l\'auto-spurgo.</string>
+
+    <string name="ink_card_title">Livelli Inchiostro</string>
+    <string name="ink_card_title_toner">Livelli Toner</string>
+    <string name="ink_low_badge">Inchiostro basso</string>
+    <string name="toner_low_badge">Toner basso</string>
+    <string name="banner_low_ink">Inchiostro basso su %1$s: %2$s.</string>
+    <string name="notif_low_ink_title">Nozzle Guardian: Inchiostro Basso</string>
+    <string name="notif_low_ink_body">%1$s quasi esaurito: %2$s.</string>
 </resources>

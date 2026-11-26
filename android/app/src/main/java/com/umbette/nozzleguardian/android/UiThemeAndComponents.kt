@@ -9,12 +9,17 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -430,42 +435,65 @@ fun StatPill(label: String, value: String, modifier: Modifier = Modifier) {
     }
 }
 
+fun markerSwatchColor(marker: MarkerSupply): Color {
+    val clean = marker.colorHex.trim().removePrefix("#")
+    val parsed = if (clean.length == 6) clean.toLongOrNull(16)?.let { Color(0xFF000000L or it) } else null
+    if (parsed != null) return parsed
+    val low = marker.name.lowercase().trim()
+    return when {
+        "light cyan" in low || low == "lc" -> Color(0xFF67E8F9)
+        "light magenta" in low || low == "lm" -> Color(0xFFF472B6)
+        "cyan" in low || "ciano" in low || low == "c" -> SwatchCyan
+        "magenta" in low || low == "m" -> SwatchMagenta
+        "yellow" in low || "giallo" in low || low == "y" -> SwatchYellow
+        "gray" in low || "grey" in low || "grigio" in low || low == "gy" -> SwatchGray
+        else -> Color(0xFF0F172A)
+    }
+}
+
+private fun shortMarkerLabel(name: String): String = name
+    .replace(" Ink Bottle", "", ignoreCase = true)
+    .replace(" Ink Cartridge", "", ignoreCase = true)
+    .replace(" Ink Tank", "", ignoreCase = true)
+    .replace(" Toner Cartridge", "", ignoreCase = true)
+    .trim()
+
 @Composable
 fun InkTankBar(marker: MarkerSupply, modifier: Modifier = Modifier) {
-    val barColor = remember(marker.colorHex, marker.name) {
-        val clean = marker.colorHex.trim().removePrefix("#")
-        val parsed = if (clean.length == 6) clean.toLongOrNull(16)?.let { Color(0xFF000000L or it) } else null
-        parsed ?: when {
-            "cyan" in marker.name.lowercase() || marker.name.equals("C", true) -> Color(0xFF06B6D4)
-            "magenta" in marker.name.lowercase() || marker.name.equals("M", true) -> Color(0xFFEC4899)
-            "yellow" in marker.name.lowercase() || marker.name.equals("Y", true) -> Color(0xFFEAB308)
-            "gray" in marker.name.lowercase() || "grey" in marker.name.lowercase() || marker.name.equals("GY", true) -> Color(0xFF94A3B8)
-            else -> Color(0xFF0F172A)
-        }
-    }
+    val safeLevel = marker.level.coerceIn(0, 100)
+    val barColor = remember(marker.colorHex, marker.name) { markerSwatchColor(marker) }
     val isDarkSwatch = (barColor.red + barColor.green + barColor.blue) < 0.6f
-    val shortName = marker.name
-        .replace(" Ink Bottle", "", ignoreCase = true)
-        .replace(" Ink Cartridge", "", ignoreCase = true)
-        .replace(" Toner Cartridge", "", ignoreCase = true)
-    val lvlStr = if (marker.level >= 0) "${marker.level}%" else "OK"
-    val fillFrac = if (marker.level in 0..100) (marker.level / 100f).coerceAtLeast(0.06f) else 1f
+    val shortName = shortMarkerLabel(marker.name)
+    val lvlStr = "$safeLevel%"
+    val fillFrac = if (safeLevel == 0) 0f else (safeLevel / 100f).coerceAtLeast(0.05f)
     val trackBorder = if (isDarkSwatch) Color(0xFF475569) else barColor.copy(alpha = 0.45f)
+    val levelColor = when {
+        safeLevel == 0 -> StatusRed
+        safeLevel <= 15 -> StatusAmber
+        else -> TextMuted
+    }
 
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(10.dp))
             .background(CardSurfaceAlt)
-            .border(1.dp, CardBorder, RoundedCornerShape(10.dp))
+            .border(1.dp, if (safeLevel <= 15) levelColor.copy(alpha = 0.45f) else CardBorder, RoundedCornerShape(10.dp))
             .padding(horizontal = 10.dp, vertical = 7.dp),
         verticalArrangement = Arrangement.spacedBy(5.dp),
     ) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(shortName, fontSize = 11.sp, color = TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                shortName,
+                fontSize = 11.sp,
+                color = TextPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f).padding(end = 4.dp),
+            )
             Text(
                 lvlStr,
                 style = MaterialTheme.typography.labelMedium,
-                color = if (marker.level in 0..15) StatusAmber else TextMuted,
+                color = levelColor,
             )
         }
         Box(
@@ -476,13 +504,62 @@ fun InkTankBar(marker: MarkerSupply, modifier: Modifier = Modifier) {
                 .background(BgDeep)
                 .border(0.8.dp, trackBorder, RoundedCornerShape(50)),
         ) {
-            Box(
+            if (fillFrac > 0f) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(fillFrac)
+                        .height(7.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(barColor),
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun CompactInkStrip(markers: List<MarkerSupply>, modifier: Modifier = Modifier) {
+    if (markers.isEmpty()) return
+    FlowRow(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        markers.forEach { marker ->
+            val safeLevel = marker.level.coerceIn(0, 100)
+            val swatch = markerSwatchColor(marker)
+            val isDark = (swatch.red + swatch.green + swatch.blue) < 0.6f
+            val levelTint = when {
+                safeLevel == 0 -> StatusRed
+                safeLevel <= 15 -> StatusAmber
+                else -> TextMuted
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
-                    .fillMaxWidth(fillFrac)
-                    .height(7.dp)
-                    .clip(RoundedCornerShape(50))
-                    .background(barColor),
-            )
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(CardSurfaceAlt)
+                    .border(0.8.dp, if (safeLevel <= 15) levelTint.copy(alpha = 0.50f) else CardBorder, RoundedCornerShape(8.dp))
+                    .padding(horizontal = 7.dp, vertical = 3.dp),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(swatch)
+                        .border(0.6.dp, if (isDark) Color(0xFF64748B) else Color.Transparent, CircleShape),
+                )
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    text = "${shortMarkerLabel(marker.name).take(6)} $safeLevel%",
+                    fontSize = 10.5.sp,
+                    fontWeight = if (safeLevel <= 15) FontWeight.SemiBold else FontWeight.Medium,
+                    color = if (safeLevel <= 15) levelTint else TextPrimary,
+                    maxLines = 1,
+                    softWrap = false,
+                )
+            }
         }
     }
 }

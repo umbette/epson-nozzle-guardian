@@ -184,6 +184,24 @@ class LanPrinterClient(private val context: Context, private val stateStore: Sta
         return null
     }
 
+    private fun probeHpConsumables(host: String, port: Int, preferTls: Boolean, state: GuardianState): List<MarkerSupply> {
+        val schemes = if (preferTls) listOf("https", "http") else listOf("http", "https")
+        val target = if (port !in listOf(80, 443, 631)) "$host:$port" else host
+        for (scheme in schemes) {
+            val parsed = runCatching {
+                val conn = openConnection("$scheme://$target/DevMgmt/ConsumableConfigDyn.xml", host, state, 2000)
+                conn.requestMethod = "GET"
+                conn.instanceFollowRedirects = true
+                val code = conn.responseCode
+                val body = if (code == 200) conn.inputStream.bufferedReader().use { it.readText() } else ""
+                conn.disconnect()
+                if (code == 200 && body.isNotBlank()) EwsParser.parseConsumablesXml(body) else emptyList()
+            }.getOrNull()
+            if (!parsed.isNullOrEmpty()) return parsed
+        }
+        return emptyList()
+    }
+
     suspend fun getStatus(host: String, port: Int = 631, useTls: Boolean = false, preferredMedia: String = "auto"): PrinterStatus =
         withContext(Dispatchers.IO) {
             if (host.isBlank()) {
@@ -213,7 +231,7 @@ class LanPrinterClient(private val context: Context, private val stateStore: Sta
             val mTypes = attrs?.stringList("marker-types").orEmpty()
             val mColors = attrs?.stringList("marker-colors").orEmpty()
 
-            var markers = mNames.mapIndexed { idx, mName ->
+            val ippMarkers = mNames.mapIndexed { idx, mName ->
                 MarkerSupply(
                     name = mName,
                     level = mLevels.getOrElse(idx) { -2 },
@@ -244,9 +262,19 @@ class LanPrinterClient(private val context: Context, private val stateStore: Sta
             var total = ews?.totalPages
             val ippTotal = attrs?.firstInt("printer-impressions-completed")
             if (total == null && ippTotal != null && ippTotal >= 0) total = ippTotal
-            val finalSnmp = if (total == null || markers.isEmpty()) snmp ?: SnmpCodec.queryPrinterTelemetry(host.trim(), timeoutMs = 1200) else snmp
+            val needsSnmp = total == null || ippMarkers.none { it.hasReliableInkLevel }
+            val finalSnmp = if (needsSnmp) snmp ?: SnmpCodec.queryPrinterTelemetry(host.trim(), timeoutMs = 1200) else snmp
             if (total == null && finalSnmp?.totalPages != null) total = finalSnmp.totalPages
-            if (markers.isEmpty() && finalSnmp != null && finalSnmp.markers.isNotEmpty()) markers = finalSnmp.markers
+
+            val snmpMarkers = finalSnmp?.markers.orEmpty()
+            val hasInkFromIppOrSnmp = ippMarkers.any { it.hasReliableInkLevel } || snmpMarkers.any { it.hasReliableInkLevel }
+            val modelLow = (model + " " + (ews?.makeAndModel ?: "")).lowercase()
+            val ewsMarkers = if (!hasInkFromIppOrSnmp && listOf("hp", "deskjet", "officejet", "smart tank", "laserjet", "envy").any { it in modelLow }) {
+                probeHpConsumables(host.trim(), port, useTls, state)
+            } else {
+                emptyList()
+            }
+            val markers = IppCodec.mergeMarkers(ippMarkers, snmpMarkers, ewsMarkers)
 
             val (detectedTanks, detectedProfile) = IppCodec.detectInkProfile(model, markers)
             val effectiveProfile = if (state.inkProfile in listOf("cmyk", "cmyk6")) state.inkProfile else detectedProfile

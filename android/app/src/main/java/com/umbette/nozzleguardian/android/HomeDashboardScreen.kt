@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.filled.WifiFind
@@ -59,6 +60,7 @@ import com.umbette.nozzleguardian.engine.LocationGroup
 import com.umbette.nozzleguardian.engine.PrinterClassification
 import com.umbette.nozzleguardian.engine.PrinterKind
 import com.umbette.nozzleguardian.engine.PrinterProfile
+import com.umbette.nozzleguardian.engine.PrinterStatus
 import com.umbette.nozzleguardian.engine.ProFeature
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -272,8 +274,10 @@ fun HomeDashboardScreen(ui: MainUiState, viewModel: NozzleGuardianViewModel) {
                 PrinterOverviewCard(
                     profile = profile,
                     locationName = locationName,
-                    cachedOnline = cached?.online,
+                    cachedStatus = cached,
                     cachedKind = cached?.printerKind ?: profile.state.lastPrinterKind,
+                    isBusy = ui.isBusy,
+                    onRefresh = { viewModel.refreshStatus(profile.id, runDormancyCheck = false) },
                     onClick = { viewModel.openPrinterDetail(profile.id) },
                 )
             }
@@ -363,10 +367,16 @@ fun HomeDashboardScreen(ui: MainUiState, viewModel: NozzleGuardianViewModel) {
 private fun PrinterOverviewCard(
     profile: PrinterProfile,
     locationName: String?,
-    cachedOnline: Boolean?,
+    cachedStatus: PrinterStatus?,
     cachedKind: PrinterKind,
+    isBusy: Boolean,
+    onRefresh: () -> Unit,
     onClick: () -> Unit,
 ) {
+    val cachedOnline = cachedStatus?.online
+    val inkMarkers = cachedStatus?.reliableInkMarkers.orEmpty()
+    val hasLowInk = cachedStatus?.lowInkMarkers?.isNotEmpty() == true
+
     ModernCard(
         borderColor = when (cachedOnline) {
             true -> StatusGreen.copy(alpha = 0.35f)
@@ -417,9 +427,32 @@ private fun PrinterOverviewCard(
                         false -> StatusBadge(stringResource(R.string.badge_offline), StatusRed)
                         null -> Text(stringResource(R.string.home_tap_to_configure), fontSize = 11.sp, color = TextMuted)
                     }
+                    if (hasLowInk) {
+                        StatusBadge(
+                            label = stringResource(if (cachedKind == PrinterKind.LASER) R.string.toner_low_badge else R.string.ink_low_badge),
+                            color = StatusAmber,
+                        )
+                    }
+                }
+            }
+            if (profile.state.printerHost.isNotBlank()) {
+                IconButton(
+                    onClick = onRefresh,
+                    enabled = !isBusy,
+                    modifier = Modifier.size(34.dp),
+                ) {
+                    Icon(
+                        Icons.Filled.Refresh,
+                        contentDescription = stringResource(R.string.refresh),
+                        tint = AccentCyan,
+                        modifier = Modifier.size(18.dp),
+                    )
                 }
             }
             Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = TextMuted)
+        }
+        if (inkMarkers.isNotEmpty()) {
+            CompactInkStrip(markers = inkMarkers)
         }
     }
 }

@@ -349,4 +349,62 @@ object IppCodec {
         if ("na_letter_8.5x11in" in ippSupported) return "na_letter_8.5x11in"
         return "iso_a4_210x297mm"
     }
+
+    private fun markerMatchKey(marker: MarkerSupply): String {
+        val low = marker.name.lowercase().trim()
+        return when {
+            "light cyan" in low || low == "lc" -> "light_cyan"
+            "light magenta" in low || low == "lm" -> "light_magenta"
+            "photo black" in low || "nero foto" in low || low == "pb" -> "photo_black"
+            "matte black" in low || low == "mb" -> "matte_black"
+            "gray" in low || "grey" in low || "grigio" in low || low == "gy" -> "gray"
+            "tri-color" in low || "tricolor" in low -> "tricolor"
+            "cyan" in low || "ciano" in low || low == "c" -> "cyan"
+            "magenta" in low || low == "m" -> "magenta"
+            "yellow" in low || "giallo" in low || low == "y" -> "yellow"
+            "black" in low || "nero" in low || low == "bk" || low == "k" -> "black"
+            else -> low.replace(Regex("[^a-z0-9]"), "")
+        }
+    }
+
+    /**
+     * Merges marker telemetry across IPP, SNMP, and EWS so valid 0..100% readings fill
+     * missing or unknown (-1/-2/-3) entries without inventing uncertain data.
+     */
+    fun mergeMarkers(
+        ippMarkers: List<MarkerSupply>,
+        snmpMarkers: List<MarkerSupply>,
+        ewsMarkers: List<MarkerSupply> = emptyList(),
+    ): List<MarkerSupply> {
+        val fallbacks = (snmpMarkers + ewsMarkers).filter { it.hasReliableInkLevel }
+        if (ippMarkers.isEmpty()) {
+            return snmpMarkers.ifEmpty { ewsMarkers }
+        }
+        val merged = ippMarkers.map { primary ->
+            if (primary.hasReliableInkLevel || primary.isWasteSupply || primary.isOtherConsumable) {
+                primary
+            } else {
+                val key = markerMatchKey(primary)
+                val replacement = fallbacks.firstOrNull { cand ->
+                    markerMatchKey(cand) == key && key.isNotEmpty()
+                } ?: fallbacks.firstOrNull { cand ->
+                    cand.name.equals(primary.name, ignoreCase = true)
+                }
+                if (replacement != null) {
+                    primary.copy(
+                        level = replacement.level,
+                        colorHex = primary.colorHex.ifBlank { replacement.colorHex },
+                    )
+                } else {
+                    primary
+                }
+            }
+        }
+        val existingKeys = merged.map { markerMatchKey(it) }.toSet()
+        val extras = fallbacks.filter { cand ->
+            val k = markerMatchKey(cand)
+            k.isNotEmpty() && k !in existingKeys
+        }
+        return merged + extras
+    }
 }

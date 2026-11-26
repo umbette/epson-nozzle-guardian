@@ -39,7 +39,36 @@ data class MarkerSupply(
     val level: Int,
     val type: String = "ink",
     val colorHex: String = "",
-)
+) {
+    val isWasteSupply: Boolean
+        get() {
+            val t = type.lowercase()
+            val n = name.lowercase()
+            return "waste" in t || "maintenance" in n || "waste" in n || "scarico" in n || "manutenzione" in n
+        }
+
+    val isOtherConsumable: Boolean
+        get() {
+            val t = type.lowercase()
+            val n = name.lowercase()
+            val nonInkTypes = listOf("fuser", "opc", "developer", "transfer", "cleaner", "staples", "binding", "banding", "stitching")
+            val nonInkNames = listOf("fuser", "drum", "transfer belt", "imaging unit", "opc")
+            return nonInkTypes.any { it in t } || nonInkNames.any { it in n }
+        }
+
+    val hasReliableInkLevel: Boolean
+        get() {
+            val trimmed = name.trim()
+            return level in 0..100 &&
+                trimmed.any { it.isLetterOrDigit() } &&
+                !trimmed.equals("unknown", ignoreCase = true) &&
+                !isWasteSupply &&
+                !isOtherConsumable
+        }
+
+    val isLowInk: Boolean
+        get() = hasReliableInkLevel && level <= 15
+}
 
 data class PrinterStatus(
     val online: Boolean,
@@ -69,6 +98,12 @@ data class PrinterStatus(
 
     val hasChannelTelemetry: Boolean
         get() = monochromePages != null && colorPages != null
+
+    val reliableInkMarkers: List<MarkerSupply>
+        get() = markers.filter { it.hasReliableInkLevel }
+
+    val lowInkMarkers: List<MarkerSupply>
+        get() = reliableInkMarkers.filter { it.isLowInk }
 }
 
 data class DiscoveredPrinter(

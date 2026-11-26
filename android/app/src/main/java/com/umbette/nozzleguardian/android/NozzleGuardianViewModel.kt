@@ -488,6 +488,10 @@ class NozzleGuardianViewModel(application: Application) : AndroidViewModel(appli
                         }
                     }
                 }
+                st.lowInkMarkers.isNotEmpty() -> {
+                    val summary = st.lowInkMarkers.joinToString(", ") { "${it.name} (${it.level}%)" }
+                    UiBanner(BannerSeverity.WARNING, R.string.banner_low_ink, listOf(st.makeAndModel ?: target.displayName, summary))
+                }
                 else -> UiBanner(BannerSeverity.SUCCESS, R.string.banner_all_active, listOf(cfg.inactivityThresholdDays.toString()))
             }
 

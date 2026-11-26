@@ -11,6 +11,7 @@ import com.umbette.nozzleguardian.engine.GuardianState
 import com.umbette.nozzleguardian.engine.HeadTechnology
 import com.umbette.nozzleguardian.engine.IppCodec
 import com.umbette.nozzleguardian.engine.LocationGroup
+import com.umbette.nozzleguardian.engine.MarkerSupply
 import com.umbette.nozzleguardian.engine.MultiPrinterWorkspace
 import com.umbette.nozzleguardian.engine.NozzleChannel
 import com.umbette.nozzleguardian.engine.OpticalNozzleScanner
@@ -264,6 +265,56 @@ class EngineUnitTests {
     fun snmpV1BuildAndParse() {
         val pkt = SnmpCodec.buildSnmpV1Request(SnmpCodec.SNMP_GET_NEXT_REQUEST, SnmpCodec.OID_PRT_MARKER_LIFE_COUNT_PREFIX, requestId = 42)
         assertEquals(0x30, pkt[0].toInt() and 0xFF)
+
+        assertEquals(75, SnmpCodec.calculateReliablePercent(rawLevel = 3, maxCap = 4))
+        assertEquals(62, SnmpCodec.calculateReliablePercent(rawLevel = 62, maxCap = 100))
+        assertEquals(40, SnmpCodec.calculateReliablePercent(rawLevel = 40, maxCap = -2, supplyUnit = 19))
+        assertEquals(-2, SnmpCodec.calculateReliablePercent(rawLevel = 40, maxCap = -2, supplyUnit = 15))
+        assertEquals(-2, SnmpCodec.calculateReliablePercent(rawLevel = 120, maxCap = 100))
+        assertEquals(-3, SnmpCodec.calculateReliablePercent(rawLevel = -3, maxCap = 100))
+    }
+
+    @Test
+    fun reliableInkMarkersFilterUncertainAndMergeAcrossProtocols() {
+        val ippUncertain = listOf(
+            MarkerSupply("Black", -2, "ink-bottle"),
+            MarkerSupply("Cyan", -3, "ink-bottle"),
+            MarkerSupply("Magenta", -1, "ink-bottle"),
+            MarkerSupply("Maintenance Box", 85, "waste-ink"),
+            MarkerSupply("Unknown", 50, "ink"),
+        )
+        val snmpExact = listOf(
+            MarkerSupply("Black Ink Bottle", 82, "ink-bottle", "#1a1a1a"),
+            MarkerSupply("Cyan Ink Bottle", 12, "ink-bottle", "#00b7eb"),
+        )
+        val merged = IppCodec.mergeMarkers(ippUncertain, snmpExact)
+        val status = PrinterStatus(online = true, markers = merged)
+
+        assertEquals(listOf("Black", "Cyan"), status.reliableInkMarkers.map { it.name })
+        assertEquals(listOf(82, 12), status.reliableInkMarkers.map { it.level })
+        assertEquals(listOf("Cyan"), status.lowInkMarkers.map { it.name })
+
+        val hpXml = """
+            <ccdyn:ConsumableConfigDyn>
+                <ccdyn:ConsumableInfo>
+                    <ccdyn:ConsumableLabelCode>K</ccdyn:ConsumableLabelCode>
+                    <dd:ConsumableTypeEnum>ink</dd:ConsumableTypeEnum>
+                    <dd:ConsumablePercentageLevelRemaining>70</dd:ConsumablePercentageLevelRemaining>
+                </ccdyn:ConsumableInfo>
+                <ccdyn:ConsumableInfo>
+                    <ccdyn:ConsumableLabelCode>C</ccdyn:ConsumableLabelCode>
+                    <dd:ConsumableTypeEnum>ink</dd:ConsumableTypeEnum>
+                    <dd:ConsumablePercentageLevelRemaining>unk</dd:ConsumablePercentageLevelRemaining>
+                </ccdyn:ConsumableInfo>
+                <ccdyn:ConsumableInfo>
+                    <ccdyn:ConsumableLabelCode>Y</ccdyn:ConsumableLabelCode>
+                    <dd:ConsumableTypeEnum>ink</dd:ConsumableTypeEnum>
+                    <dd:ConsumablePercentageLevelRemaining>10</dd:ConsumablePercentageLevelRemaining>
+                </ccdyn:ConsumableInfo>
+            </ccdyn:ConsumableConfigDyn>
+        """.trimIndent()
+        val parsedXml = EwsParser.parseConsumablesXml(hpXml)
+        assertEquals(listOf("Black" to 70, "Yellow" to 10), parsedXml.map { it.name to it.level })
     }
 
     @Test

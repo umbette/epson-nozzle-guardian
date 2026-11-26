@@ -241,4 +241,12 @@
     <string name="notif_purge_ok_title">Nozzle Guardian: Auto-Purge Completed</string>
     <string name="notif_dormant_free_title">Nozzle Guardian: Printer Idle</string>
     <string name="notif_dormant_free_body">%1$s idle (%2$s): tap to run a manual purge or unlock Lifetime Pro for auto-purge.</string>
+
+    <string name="ink_card_title">Ink Levels</string>
+    <string name="ink_card_title_toner">Toner Levels</string>
+    <string name="ink_low_badge">Low Ink</string>
+    <string name="toner_low_badge">Low Toner</string>
+    <string name="banner_low_ink">Low ink on %1$s: %2$s.</string>
+    <string name="notif_low_ink_title">Nozzle Guardian: Low Ink</string>
+    <string name="notif_low_ink_body">%1$s running low: %2$s.</string>
 </resources>
