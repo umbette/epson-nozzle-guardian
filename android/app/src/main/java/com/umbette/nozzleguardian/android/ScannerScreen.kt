@@ -182,9 +182,10 @@ fun ScannerScreen(ui: MainUiState, viewModel: NozzleGuardianViewModel) {
                     .background(CardSurfaceAlt)
                     .padding(12.dp),
             ) {
+                val healthInt = rep.overallHealthPct.toInt().coerceIn(0, 100)
                 val gaugeColor = when {
-                    rep.overallHealthPct >= 90 -> StatusGreen
-                    rep.overallHealthPct >= 65 -> StatusAmber
+                    healthInt >= 90 -> StatusGreen
+                    healthInt >= 65 -> StatusAmber
                     else -> StatusRed
                 }
                 Box(contentAlignment = Alignment.Center, modifier = Modifier.size(64.dp)) {
@@ -199,12 +200,12 @@ fun ScannerScreen(ui: MainUiState, viewModel: NozzleGuardianViewModel) {
                         drawArc(
                             color = gaugeColor,
                             startAngle = -90f,
-                            sweepAngle = 360f * (rep.overallHealthPct / 100f),
+                            sweepAngle = 360f * (healthInt / 100f),
                             useCenter = false,
                             style = Stroke(width = 6.dp.toPx(), cap = StrokeCap.Round),
                         )
                     }
-                    Text("${rep.overallHealthPct}%", style = MaterialTheme.typography.labelMedium, color = gaugeColor)
+                    Text("${healthInt}%", style = MaterialTheme.typography.labelMedium, color = gaugeColor)
                 }
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Text(
@@ -220,7 +221,7 @@ fun ScannerScreen(ui: MainUiState, viewModel: NozzleGuardianViewModel) {
                                 info.missingSteps.joinToString()
                             }
                             Text(
-                                stringResource(R.string.scanner_channel_row, ch.uppercase(), info.healthPct, missing),
+                                stringResource(R.string.scanner_channel_row, ch.uppercase(), (info.healthPct ?: 0.0).toInt(), missing),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = TextMuted,
                             )

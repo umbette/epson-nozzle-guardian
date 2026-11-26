@@ -540,7 +540,7 @@ class NozzleGuardianViewModel(application: Application) : AndroidViewModel(appli
             return
         }
         viewModelScope.launch {
-            val prevHealth = _uiState.value.scanReport?.overallHealthPct
+            val prevHealth = _uiState.value.scanReport?.overallHealthPct?.toInt()
             _uiState.update { it.copy(isBusy = true, banner = UiBanner(BannerSeverity.INFO, R.string.banner_scanning_sheet)) }
             val report = client.scanPhotoUri(uri)
             val target = _uiState.value.activePrinter
@@ -552,7 +552,7 @@ class NozzleGuardianViewModel(application: Application) : AndroidViewModel(appli
                     eventType = "optical_scan",
                     success = true,
                     healthBeforePct = prevHealth,
-                    healthAfterPct = report.overallHealthPct,
+                    healthAfterPct = report.overallHealthPct.toInt(),
                 )
             }
             _uiState.update {
