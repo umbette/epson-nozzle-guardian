@@ -3,6 +3,7 @@ package com.umbette.nozzleguardian.android
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -21,7 +22,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
-import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material3.Button
@@ -57,8 +59,8 @@ import com.umbette.nozzleguardian.engine.ProFeature
 import java.io.File
 
 /**
- * Optical Nozzle Scanner & Manual Surgical Matrix bound directly inside a concrete Printer Hub.
- * Ensures every camera scan and surgical shot applies cleanly to the selected printer model.
+ * Step 2 of the unified maintenance workflow inside a Printer Hub:
+ * Verify the printed sheet via Camera Scanner (Pro) or expand the manual 1-10 matrix.
  */
 @Composable
 fun PrinterScannerSection(
@@ -68,10 +70,12 @@ fun PrinterScannerSection(
 ) {
     val context = LocalContext.current
     var cameraUri by remember { mutableStateOf<Uri?>(null) }
+    var showManualMatrix by remember { mutableStateOf(false) }
     val hasCameraAccess = ui.entitlement.hasAccess(ProFeature.CAMERA_SCANNER)
     val st = ui.printerStatuses[profile.id]
     val cfg = profile.state
     val isLaser = (st?.printerKind ?: cfg.lastPrinterKind) == PrinterKind.LASER
+    if (isLaser) return
 
     val takePicture = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
         if (ok) cameraUri?.let { viewModel.scanSheetUri(it, printerId = profile.id) }
@@ -80,28 +84,13 @@ fun PrinterScannerSection(
         uri?.let { viewModel.scanSheetUri(it, printerId = profile.id) }
     }
 
-    if (isLaser) {
-        ModernCard(borderColor = StatusAmber.copy(alpha = 0.45f), containerColor = StatusAmber.copy(alpha = 0.08f)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(Icons.Filled.Info, contentDescription = null, tint = StatusAmber, modifier = Modifier.size(20.dp))
-                Text(stringResource(R.string.detail_laser_title), style = MaterialTheme.typography.titleSmall, color = StatusAmber)
-            }
-            Text(
-                stringResource(R.string.scanner_laser_notice, profile.displayName),
-                style = MaterialTheme.typography.bodySmall,
-                color = TextPrimary,
-            )
-        }
-        return
-    }
-
     ModernCard(borderColor = if (hasCameraAccess) CardBorder else ProGold.copy(alpha = 0.4f)) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Text(stringResource(R.string.scanner_title), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+            Text(stringResource(R.string.clean_step2_title), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
             ProBadge(stringResource(R.string.badge_pro))
         }
         Text(stringResource(R.string.scanner_subtitle), style = MaterialTheme.typography.bodySmall, color = TextMuted)
@@ -257,53 +246,77 @@ fun PrinterScannerSection(
                 }
             }
         }
-    }
 
-    // Accessible 2x5 Surgical Matrix adapted specifically to this PrinterProfile
-    ModernCard {
-        Text(stringResource(R.string.surgical_title), style = MaterialTheme.typography.titleSmall)
-        if ((st?.headTechnology ?: cfg.lastHeadTechnology) == HeadTechnology.THERMAL) {
-            Text(stringResource(R.string.surgical_thermal_note), style = MaterialTheme.typography.bodySmall, color = AccentCyan)
-        }
-        val isSixTankMatrix = cfg.inkProfile == "cmyk6" ||
-            st?.inkProfile == "cmyk6" ||
-            (st?.tankCount ?: 4) >= 6
-        val visibleChannels = if (isSixTankMatrix) {
-            NozzleChannel.entries
-        } else {
-            listOf(NozzleChannel.CYAN, NozzleChannel.MAGENTA, NozzleChannel.YELLOW, NozzleChannel.BLACK)
+        // Collapsible manual precision 2x5 surgical matrix for visual inspection without camera
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(10.dp))
+                .background(CardSurfaceAlt)
+                .clickable { showManualMatrix = !showManualMatrix }
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+        ) {
+            Text(
+                stringResource(R.string.clean_manual_toggle),
+                fontSize = 12.5.sp,
+                fontWeight = FontWeight.Medium,
+                color = AccentCyan,
+                modifier = Modifier.weight(1f),
+            )
+            Icon(
+                imageVector = if (showManualMatrix) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                contentDescription = null,
+                tint = AccentCyan,
+            )
         }
 
-        visibleChannels.forEach { channel ->
-            val accent = when (channel) {
-                NozzleChannel.CYAN -> Color(0xFF22D3EE)
-                NozzleChannel.MAGENTA -> Color(0xFFF472B6)
-                NozzleChannel.YELLOW -> Color(0xFFFACC15)
-                NozzleChannel.BLACK, NozzleChannel.PHOTO_BLACK -> Color(0xFF94A3B8)
-                NozzleChannel.GRAY -> Color(0xFFCBD5E1)
-            }
-            Text(stringResource(channelTitleRes(channel)), fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = accent)
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                listOf(1..5, 6..10).forEach { range ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                        for (step in range) {
-                            Box(
-                                contentAlignment = Alignment.Center,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(44.dp)
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(accent.copy(alpha = 0.16f))
-                                    .border(1.dp, accent.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
-                                    .clickable(enabled = !ui.isBusy) {
-                                        viewModel.triggerSurgicalPurge(channel, step, printerId = profile.id)
-                                    },
-                            ) {
-                                Text(
-                                    "$step",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = TextPrimary,
-                                )
+        AnimatedVisibility(visible = showManualMatrix) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
+                if ((st?.headTechnology ?: cfg.lastHeadTechnology) == HeadTechnology.THERMAL) {
+                    Text(stringResource(R.string.surgical_thermal_note), style = MaterialTheme.typography.bodySmall, color = AccentCyan)
+                }
+                val isSixTankMatrix = cfg.inkProfile == "cmyk6" ||
+                    st?.inkProfile == "cmyk6" ||
+                    (st?.tankCount ?: 4) >= 6
+                val visibleChannels = if (isSixTankMatrix) {
+                    NozzleChannel.entries
+                } else {
+                    listOf(NozzleChannel.CYAN, NozzleChannel.MAGENTA, NozzleChannel.YELLOW, NozzleChannel.BLACK)
+                }
+
+                visibleChannels.forEach { channel ->
+                    val accent = when (channel) {
+                        NozzleChannel.CYAN -> Color(0xFF22D3EE)
+                        NozzleChannel.MAGENTA -> Color(0xFFF472B6)
+                        NozzleChannel.YELLOW -> Color(0xFFFACC15)
+                        NozzleChannel.BLACK, NozzleChannel.PHOTO_BLACK -> Color(0xFF94A3B8)
+                        NozzleChannel.GRAY -> Color(0xFFCBD5E1)
+                    }
+                    Text(stringResource(channelTitleRes(channel)), fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = accent)
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf(1..5, 6..10).forEach { range ->
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                                for (step in range) {
+                                    Box(
+                                        contentAlignment = Alignment.Center,
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(44.dp)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(accent.copy(alpha = 0.16f))
+                                            .border(1.dp, accent.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
+                                            .clickable(enabled = !ui.isBusy) {
+                                                viewModel.triggerSurgicalPurge(channel, step, printerId = profile.id)
+                                            },
+                                    ) {
+                                        Text(
+                                            "$step",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = TextPrimary,
+                                        )
+                                    }
+                                }
                             }
                         }
                     }

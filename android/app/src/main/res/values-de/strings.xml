@@ -27,7 +27,12 @@
     <string name="home_add_printer_manual">Drucker +</string>
     <string name="detail_laser_title">Laser- / Tonerdrucker erkannt</string>
     <string name="detail_laser_body">Gute Nachricht: %1$s nutzt Trockentoner ohne flüssige Tinte. Düsenspülungen sind deaktiviert; Tonerstand und Seitenzähler bleiben aktiv.</string>
-    <string name="detail_purge_card_title">Direkte Mikro-Spülung (Gratis)</string>
+    <string name="detail_purge_card_title">1. Mikro-Spülung / Testblatt drucken (Gratis)</string>
+    <string name="detail_purge_k">Schwarz</string>
+    <string name="detail_purge_color">Farben</string>
+    <string name="detail_purge_cmyk">Alle</string>
+    <string name="subtab_clean_verify">Spülen &amp; Prüfen</string>
+    <string name="subtab_settings">Einstellungen</string>
     <string name="detail_schedule_card_title">Intervall &amp; Schwellenwert (Je Modell)</string>
     <string name="detail_inactivity_threshold">Inaktivitäts-Schwelle</string>
     <string name="detail_days_unit">%1$d Tage</string>

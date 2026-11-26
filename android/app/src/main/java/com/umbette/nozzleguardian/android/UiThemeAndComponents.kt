@@ -84,6 +84,27 @@ val TextMuted = Color(0xFF94A3B8)
 val StatusGreen = Color(0xFF22C55E)
 val StatusAmber = Color(0xFFF59E0B)
 val StatusRed = Color(0xFFEF4444)
+val SwatchCyan = Color(0xFF06B6D4)
+val SwatchMagenta = Color(0xFFEC4899)
+val SwatchYellow = Color(0xFFEAB308)
+val SwatchBlack = Color(0xFF0F172A)
+val SwatchGray = Color(0xFF94A3B8)
+
+@Composable
+fun InkSwatchRow(colors: List<Color>, dotSize: Dp = 9.dp) {
+    Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
+        colors.forEach { col ->
+            val borderCol = if (col == SwatchBlack) Color(0xFF64748B) else Color.White.copy(alpha = 0.28f)
+            Box(
+                modifier = Modifier
+                    .size(dotSize)
+                    .clip(RoundedCornerShape(2.5.dp))
+                    .background(col)
+                    .border(0.8.dp, borderCol, RoundedCornerShape(2.5.dp)),
+            )
+        }
+    }
+}
 
 private val DarkPalette = darkColorScheme(
     primary = AccentCyan,

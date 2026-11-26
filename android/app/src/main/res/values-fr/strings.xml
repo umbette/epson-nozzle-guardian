@@ -27,7 +27,12 @@
     <string name="home_add_printer_manual">Ajouter IP</string>
     <string name="detail_laser_title">Imprimante Laser / Toner détectée</string>
     <string name="detail_laser_body">Bonne nouvelle : %1$s utilise du toner sec et n\'a pas de buses liquides pouvant sécher. Les purges sont désactivées ; le suivi toner et les compteurs restent actifs.</string>
-    <string name="detail_purge_card_title">Micro-Purge Directe (Gratuit)</string>
+    <string name="detail_purge_card_title">1. Imprimer Micro-Purge / Mire (Gratuit)</string>
+    <string name="detail_purge_k">Noir</string>
+    <string name="detail_purge_color">Couleurs</string>
+    <string name="detail_purge_cmyk">Tous</string>
+    <string name="subtab_clean_verify">Nettoyage &amp; Vérif.</string>
+    <string name="subtab_settings">Paramètres</string>
     <string name="detail_schedule_card_title">Fréquence &amp; Seuil (Par Modèle)</string>
     <string name="detail_inactivity_threshold">Seuil d\'inactivité</string>
     <string name="detail_days_unit">%1$d jours</string>
