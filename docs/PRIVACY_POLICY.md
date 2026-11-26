@@ -24,7 +24,7 @@ Nozzle Guardian is designed around **local-first printer maintenance**. Core fun
 In-app Lifetime Pro purchases (`nozzle_guardian_pro_lifetime`) are processed exclusively by **Google Play**. Nozzle Guardian receives only your entitlement status and product identifier from Play Billing and never accesses payment card numbers or billing addresses.
 
 ### 4. Optional Account & Cross-Device Sync
-Creating or saving a profile in *Pro & Info* is **strictly optional**. If you enter a display name/email or configure a custom self-hosted sync server URL (or authenticate via Google Sign-In in future builds), workspace printer configurations are transmitted only to the endpoint you explicitly configure.
+Creating or saving a profile in *Pro & Info* is **strictly optional** and independent from Google or social login providers. If you enter an optional email/pairing token or configure a custom sync server URL, workspace printer configurations are transmitted only to the endpoint you explicitly configure.
 
 ### 5. Optional Opt-In Compatibility Telemetry ("Help Us Improve")
 Telemetry is **OFF by default**. If you explicitly enable *"Share anonymous compatibility stats"*, the app sends small anonymous technical events containing **only**:
@@ -55,7 +55,7 @@ You can disable telemetry or regenerate/reset your `installId` at any time insid
 
 ### 3. Pagamenti Google Play e Account Opzionale
 - L'acquisto Pro Lifetime (`nozzle_guardian_pro_lifetime`) è gestito interamente da Google Play Billing; l'app non vede dati di pagamento.
-- L'eventuale profilo / server Sync (o futuro accesso Google) è **100% facoltativo**.
+- L'eventuale profilo / server Sync è **100% facoltativo e indipendente da Google o social login esterni**.
 
 ### 4. Telemetria Anonima Opt-In ("Aiutaci a migliorare")
 - **Disattivata di default.** Solo se attivi manualmente lo switch, vengono inviati eventi tecnici anonimi privi di IP, SSID Wi-Fi, email o file (solo ID casuale rigenerabile, famiglia modello generica, tecnologia testina, formato IPP, soglia giorni, esito spurgo ed eventuale salute `%`).

@@ -74,5 +74,5 @@ Create **one managed one-time product** matching `EntitlementPolicy.SKU_PRO_LIFE
 ---
 
 ## 5. Future Recommended Upgrades Before Scale
-1. **Google Sign-In (Credential Manager)**: Register `com.umbette.nozzleguardian` + Google Play App Signing `SHA-1` in Google Cloud Console (`OAuth 2.0 Client ID`) and add a lightweight `/auth/google` verifier to exchange Google ID tokens for synced workspaces.
+1. **Passwordless Independent Auth (Zero Google/Social SDK)**: Implement a lightweight `/auth/request-code` + `/auth/verify-code` (6-digit Email OTP / Magic Link) or device Pairing Token so accounts remain 100% independent from Google, Apple, or social OAuth providers (ensuring compatibility with de-Googled Android / F-Droid / sideload builds too).
 2. **Production Sync & Telemetry Hosting**: Keep your Dell homelab for staging/self-hosting and deploy a small GDPR-compliant EU VPS / Cloudflare Worker (`https://api.nozzleguardian.app`) for Play Store users' `/telemetry` and `/sync/workspace` traffic.
