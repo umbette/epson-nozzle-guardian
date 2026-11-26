@@ -59,4 +59,6 @@
     <string name="subtab_rules_network">Regeln &amp; WLAN</string>
     <string name="wifi_bind_current_btn">Aktuelles WLAN binden</string>
     <string name="account_no_google_note">Eigenständiges Konto: kein Google-Login nötig.</string>
+    <string name="account_card_title">Eigener Server &amp; Backup (Erweitert)</string>
+    <string name="account_cloud_note">Kein Konto für die Nutzung oder Lifetime Pro erforderlich.</string>
 </resources>

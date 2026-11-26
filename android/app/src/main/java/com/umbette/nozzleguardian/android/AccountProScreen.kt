@@ -3,8 +3,10 @@ package com.umbette.nozzleguardian.android
 import android.app.Activity
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -16,6 +18,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Analytics
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.AlertDialog
@@ -234,90 +238,99 @@ fun AccountProScreen(ui: MainUiState, viewModel: NozzleGuardianViewModel) {
         }
     }
 
-    // 3. Independent Passwordless / Pairing Account (Zero Google / Social Login!)
+    // 3. Collapsed Self-Hosted Server & Manual Backup (Advanced — hidden from normal users)
+    var showAdvancedSync by remember { mutableStateOf(false) }
     ModernCard {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { showAdvancedSync = !showAdvancedSync },
         ) {
             Icon(Icons.Filled.Sync, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(18.dp))
             Text(stringResource(R.string.account_card_title), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-            if (!ui.entitlement.hasAccess(ProFeature.CLOUD_SYNC)) {
-                ProBadge(stringResource(R.string.badge_pro))
-            }
+            Icon(
+                imageVector = if (showAdvancedSync) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                contentDescription = null,
+                tint = TextMuted,
+            )
         }
-        Text(stringResource(R.string.account_card_body), style = MaterialTheme.typography.bodySmall, color = TextMuted)
-        Text(stringResource(R.string.account_no_google_note), style = MaterialTheme.typography.bodySmall, color = AccentCyan)
+        Text(stringResource(R.string.account_cloud_note), style = MaterialTheme.typography.bodySmall, color = TextMuted)
 
-        NgTextField(
-            value = emailInput,
-            onValueChange = { emailInput = it },
-            label = stringResource(R.string.account_email_label),
-            modifier = Modifier.fillMaxWidth(),
-        )
-        NgTextField(
-            value = nameInput,
-            onValueChange = { nameInput = it },
-            label = stringResource(R.string.account_name_label),
-            modifier = Modifier.fillMaxWidth(),
-        )
-        NgTextField(
-            value = pairingInput,
-            onValueChange = { pairingInput = it },
-            label = stringResource(R.string.account_pairing_label),
-            modifier = Modifier.fillMaxWidth(),
-        )
-        NgTextField(
-            value = syncUrlInput,
-            onValueChange = { syncUrlInput = it },
-            label = stringResource(R.string.account_sync_url_label),
-            modifier = Modifier.fillMaxWidth(),
-        )
+        AnimatedVisibility(visible = showAdvancedSync) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(top = 4.dp)) {
+                Text(stringResource(R.string.account_card_body), style = MaterialTheme.typography.bodySmall, color = TextMuted)
+                NgTextField(
+                    value = nameInput,
+                    onValueChange = { nameInput = it },
+                    label = stringResource(R.string.account_name_label),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                NgTextField(
+                    value = emailInput,
+                    onValueChange = { emailInput = it },
+                    label = stringResource(R.string.account_email_label),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                NgTextField(
+                    value = pairingInput,
+                    onValueChange = { pairingInput = it },
+                    label = stringResource(R.string.account_pairing_label),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                NgTextField(
+                    value = syncUrlInput,
+                    onValueChange = { syncUrlInput = it },
+                    label = stringResource(R.string.account_sync_url_label),
+                    modifier = Modifier.fillMaxWidth(),
+                )
 
-        ui.account.lastSyncedIso?.let { ts ->
-            Text(stringResource(R.string.account_last_sync, ts), style = MaterialTheme.typography.bodySmall, color = StatusGreen)
-        }
-
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            Button(
-                onClick = { viewModel.saveAccountSession(emailInput, nameInput, pairingInput, syncUrlInput) },
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.weight(1f).height(44.dp),
-            ) {
-                Text(stringResource(R.string.account_save_btn), maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
-            }
-            if (ui.account.signedIn) {
-                OutlinedButton(
-                    onClick = { viewModel.signOutAccount() },
-                    shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, CardBorder),
-                    modifier = Modifier.weight(1f).height(44.dp),
-                ) {
-                    Text(stringResource(R.string.account_signout_btn), maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+                ui.account.lastSyncedIso?.let { ts ->
+                    Text(stringResource(R.string.account_last_sync, ts), style = MaterialTheme.typography.bodySmall, color = StatusGreen)
                 }
-            }
-        }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            FilledTonalButton(
-                onClick = {
-                    val json = viewModel.exportSnapshotJson()
-                    clipboard.setText(AnnotatedString(json))
-                    viewModel.notifyJsonCopied()
-                },
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.weight(1f).height(44.dp),
-            ) {
-                Text(stringResource(R.string.account_copy_json_btn), maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
-            }
-            OutlinedButton(
-                onClick = { viewModel.syncWorkspaceToServer() },
-                shape = RoundedCornerShape(12.dp),
-                border = BorderStroke(1.dp, AccentCyan.copy(alpha = 0.45f)),
-                modifier = Modifier.weight(1f).height(44.dp),
-            ) {
-                Text(stringResource(R.string.account_sync_now_btn), color = AccentCyan, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    Button(
+                        onClick = { viewModel.saveAccountSession(emailInput, nameInput, pairingInput, syncUrlInput) },
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.weight(1f).height(44.dp),
+                    ) {
+                        Text(stringResource(R.string.account_save_btn), maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+                    }
+                    if (ui.account.signedIn) {
+                        OutlinedButton(
+                            onClick = { viewModel.signOutAccount() },
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, CardBorder),
+                            modifier = Modifier.weight(1f).height(44.dp),
+                        ) {
+                            Text(stringResource(R.string.account_signout_btn), maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    FilledTonalButton(
+                        onClick = {
+                            val json = viewModel.exportSnapshotJson()
+                            clipboard.setText(AnnotatedString(json))
+                            viewModel.notifyJsonCopied()
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.weight(1f).height(44.dp),
+                    ) {
+                        Text(stringResource(R.string.account_copy_json_btn), maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+                    }
+                    OutlinedButton(
+                        onClick = { viewModel.syncWorkspaceToServer() },
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, AccentCyan.copy(alpha = 0.45f)),
+                        modifier = Modifier.weight(1f).height(44.dp),
+                    ) {
+                        Text(stringResource(R.string.account_sync_now_btn), color = AccentCyan, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+                    }
+                }
             }
         }
     }

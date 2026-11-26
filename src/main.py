@@ -646,7 +646,7 @@ HTML_DASHBOARD_TEMPLATE = """<!DOCTYPE html>
           <rect x="40" y="63.5" width="28" height="5" rx="2.5" fill="#0F172A"/>
         </svg>
         Nozzle Guardian
-        <span style="font-size: 0.72rem; color: var(--primary); background: rgba(56,189,248,0.14); border: 1px solid rgba(56,189,248,0.35); padding: 2px 8px; border-radius: 999px;">v1.5.2</span>
+        <span style="font-size: 0.72rem; color: var(--primary); background: rgba(56,189,248,0.14); border: 1px solid rgba(56,189,248,0.35); padding: 2px 8px; border-radius: 999px;">v1.5.3</span>
       </h1>
       <span id="printerStatusBadge" class="badge badge-offline">Caricamento...</span>
     </header>

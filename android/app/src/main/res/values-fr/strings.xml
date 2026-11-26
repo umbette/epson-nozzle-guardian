@@ -59,4 +59,6 @@
     <string name="subtab_rules_network">Règles &amp; Réseau</string>
     <string name="wifi_bind_current_btn">Lier Wi-Fi actuel</string>
     <string name="account_no_google_note">Compte indépendant : aucune connexion Google requise.</string>
+    <string name="account_card_title">Serveur Personnel &amp; Sauvegarde (Avancé)</string>
+    <string name="account_cloud_note">Aucun compte requis pour utiliser l\'application ou Pro.</string>
 </resources>

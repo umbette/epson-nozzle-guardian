@@ -184,8 +184,9 @@
     <string name="account_pairing_label">Codice Pairing / Token Dispositivo (opzionale)</string>
     <string name="account_no_google_note">Account autonomo: nessun accesso con Google, Apple o social esterni.</string>
 
-    <string name="account_card_title">Account Opzionale &amp; Backup Sync</string>
-    <string name="account_card_body">Nessun account richiesto per uso locale. Inserisci un profilo o URL self-hosted (es. porta 8086) solo se vuoi sincronizzare tra dispositivi.</string>
+    <string name="account_card_title">Server Personale &amp; Backup (Avanzate)</string>
+    <string name="account_card_body">Solo per utenti Homelab/Docker self-hosted: collega facoltativamente il tuo server locale (es. porta 8086) o esporta il backup JSON.</string>
+    <string name="account_cloud_note">Nessun login richiesto per usare l\'app o sbloccare Pro su Google Play. L\'account cloud opzionale arriverà dopo il completamento delle funzioni locali.</string>
     <string name="account_email_label">Email Account (opzionale)</string>
     <string name="account_name_label">Nome Profilo</string>
     <string name="account_sync_url_label">URL Server Sync (opzionale, es. http://192.168.1.50:8086)</string>
