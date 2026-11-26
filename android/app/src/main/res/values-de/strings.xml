@@ -23,8 +23,8 @@
     <string name="home_location_manage">Verwalten</string>
     <string name="home_add_location">Neuer Standort</string>
     <string name="home_edit_location">Standort bearbeiten</string>
-    <string name="home_discover_mdns">WLAN-Suche (mDNS)</string>
-    <string name="home_add_printer_manual">Manuell hinzufügen</string>
+    <string name="home_discover_mdns">WLAN-Suche</string>
+    <string name="home_add_printer_manual">Drucker +</string>
     <string name="detail_laser_title">Laser- / Tonerdrucker erkannt</string>
     <string name="detail_laser_body">Gute Nachricht: %1$s nutzt Trockentoner ohne flüssige Tinte. Düsenspülungen sind deaktiviert; Tonerstand und Seitenzähler bleiben aktiv.</string>
     <string name="detail_purge_card_title">Direkte Mikro-Spülung (Gratis)</string>

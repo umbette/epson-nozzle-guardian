@@ -36,8 +36,8 @@
     <string name="home_location_icon_label">Icona luogo</string>
     <string name="home_empty_location_title">Nessuna stampante in %1$s</string>
     <string name="home_empty_location_body">Cerca in Wi-Fi con mDNS o aggiungi una stampante manualmente per questo luogo.</string>
-    <string name="home_discover_mdns">Cerca Wi-Fi (mDNS)</string>
-    <string name="home_add_printer_manual">Aggiungi Manualmente</string>
+    <string name="home_discover_mdns">Cerca mDNS</string>
+    <string name="home_add_printer_manual">Aggiungi IP</string>
     <string name="home_discovered_title">Trovate su Wi-Fi</string>
     <string name="home_tap_to_configure">Apri dettagli</string>
     <string name="home_schedule_auto_days">Auto • %1$dg</string>

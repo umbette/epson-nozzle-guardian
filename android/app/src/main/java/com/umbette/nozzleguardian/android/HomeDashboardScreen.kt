@@ -224,11 +224,12 @@ fun HomeDashboardScreen(ui: MainUiState, viewModel: NozzleGuardianViewModel) {
                     onClick = { viewModel.discoverPrinters() },
                     enabled = !ui.isDiscovering,
                     shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
                     modifier = Modifier.weight(1f).height(44.dp),
                 ) {
                     Icon(Icons.Filled.WifiFind, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text(stringResource(R.string.home_discover_mdns), maxLines = 1, softWrap = false, fontSize = 12.sp)
+                    Spacer(Modifier.width(5.dp))
+                    Text(stringResource(R.string.home_discover_mdns), maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis, fontSize = 12.sp)
                 }
                 OutlinedButton(
                     onClick = {
@@ -240,11 +241,12 @@ fun HomeDashboardScreen(ui: MainUiState, viewModel: NozzleGuardianViewModel) {
                     },
                     shape = RoundedCornerShape(12.dp),
                     border = BorderStroke(1.dp, CardBorder),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
                     modifier = Modifier.weight(1f).height(44.dp),
                 ) {
                     Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text(stringResource(R.string.home_add_printer_manual), maxLines = 1, softWrap = false, fontSize = 12.sp)
+                    Text(stringResource(R.string.home_add_printer_manual), maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis, fontSize = 12.sp)
                 }
             }
         }
@@ -269,11 +271,12 @@ fun HomeDashboardScreen(ui: MainUiState, viewModel: NozzleGuardianViewModel) {
                 onClick = { viewModel.discoverPrinters() },
                 enabled = !ui.isDiscovering,
                 shape = RoundedCornerShape(12.dp),
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
                 modifier = Modifier.weight(1f).height(44.dp),
             ) {
                 Icon(Icons.Filled.WifiFind, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(6.dp))
-                Text(stringResource(R.string.home_discover_mdns), maxLines = 1, softWrap = false, fontSize = 12.sp)
+                Spacer(Modifier.width(5.dp))
+                Text(stringResource(R.string.home_discover_mdns), maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis, fontSize = 12.sp)
             }
             OutlinedButton(
                 onClick = {
@@ -285,11 +288,12 @@ fun HomeDashboardScreen(ui: MainUiState, viewModel: NozzleGuardianViewModel) {
                 },
                 shape = RoundedCornerShape(12.dp),
                 border = BorderStroke(1.dp, AccentCyan.copy(alpha = 0.45f)),
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
                 modifier = Modifier.weight(1f).height(44.dp),
             ) {
                 Icon(Icons.Filled.Add, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(4.dp))
-                Text(stringResource(R.string.home_add_printer_manual), color = AccentCyan, maxLines = 1, softWrap = false, fontSize = 12.sp)
+                Text(stringResource(R.string.home_add_printer_manual), color = AccentCyan, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis, fontSize = 12.sp)
             }
         }
     }

@@ -23,8 +23,8 @@
     <string name="home_location_manage">Gérer</string>
     <string name="home_add_location">Nouveau Lieu</string>
     <string name="home_edit_location">Modifier le Lieu</string>
-    <string name="home_discover_mdns">Rechercher Wi-Fi (mDNS)</string>
-    <string name="home_add_printer_manual">Ajouter Manuellement</string>
+    <string name="home_discover_mdns">Scan Wi-Fi</string>
+    <string name="home_add_printer_manual">Ajouter IP</string>
     <string name="detail_laser_title">Imprimante Laser / Toner détectée</string>
     <string name="detail_laser_body">Bonne nouvelle : %1$s utilise du toner sec et n\'a pas de buses liquides pouvant sécher. Les purges sont désactivées ; le suivi toner et les compteurs restent actifs.</string>
     <string name="detail_purge_card_title">Micro-Purge Directe (Gratuit)</string>

@@ -36,8 +36,8 @@
     <string name="home_location_icon_label">Place icon</string>
     <string name="home_empty_location_title">No printers in %1$s</string>
     <string name="home_empty_location_body">Scan Wi-Fi with mDNS or add a printer manually for this location.</string>
-    <string name="home_discover_mdns">Scan Wi-Fi (mDNS)</string>
-    <string name="home_add_printer_manual">Add Printer Manually</string>
+    <string name="home_discover_mdns">Scan Wi-Fi</string>
+    <string name="home_add_printer_manual">Add Printer</string>
     <string name="home_discovered_title">Discovered on Wi-Fi</string>
     <string name="home_tap_to_configure">Open details</string>
     <string name="home_schedule_auto_days">Auto • %1$dd</string>
