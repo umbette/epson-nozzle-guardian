@@ -197,6 +197,17 @@ object PrinterClassification {
         }
         return brand to silhouette
     }
+
+    fun recommendedThresholdDays(
+        kind: PrinterKind,
+        headTechnology: HeadTechnology,
+        tankCount: Int = 4,
+    ): Int = when {
+        kind == PrinterKind.LASER -> 0
+        headTechnology == HeadTechnology.THERMAL -> 4
+        tankCount >= 6 -> 4
+        else -> 6
+    }
 }
 
 data class LocationGroup(

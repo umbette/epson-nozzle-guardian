@@ -176,6 +176,35 @@ class EngineUnitTests {
         assertTrue("\"locations\"" in snap)
         assertTrue("\"ET-4810 Ufficio\"" in snap)
         assertTrue("\"user@example.com\"" in snap)
+
+        val editedWs = WorkspaceEngine.updateLocation(ws, "office", "Studio Photo", "Studio5G", "studio")
+        assertEquals("Studio Photo", editedWs.locations.first { it.id == "office" }.name)
+        assertEquals("Studio5G", editedWs.locations.first { it.id == "office" }.wifiSsid)
+        assertEquals("studio", editedWs.locations.first { it.id == "office" }.iconKey)
+
+        assertEquals(4, PrinterClassification.recommendedThresholdDays(PrinterKind.INKJET, HeadTechnology.THERMAL, 4))
+        assertEquals(4, PrinterClassification.recommendedThresholdDays(PrinterKind.INKJET, HeadTechnology.PIEZO, 6))
+        assertEquals(6, PrinterClassification.recommendedThresholdDays(PrinterKind.INKJET, HeadTechnology.PIEZO, 4))
+        assertEquals(0, PrinterClassification.recommendedThresholdDays(PrinterKind.LASER, HeadTechnology.LASER, 4))
+
+        val tele = TelemetryPayloadBuilder.buildEventJson(
+            installId = "anon-uuid-1",
+            appVersion = "1.4.0",
+            tier = PlanTier.PRO,
+            brand = BrandBadge.EPSON,
+            modelFamily = "EPSON ET-2810 (SN12345)",
+            headTechnology = HeadTechnology.PIEZO,
+            inkProfile = "cmyk",
+            preferredFormat = "image/pwg-raster",
+            inactivityDays = 5,
+            eventType = "manual_purge",
+            outcomeSuccess = true,
+            healthBeforePct = 80,
+            healthAfterPct = 100,
+        )
+        assertTrue("\"modelFamily\":\"EPSON ET-2810\"" in tele)
+        assertFalse("SN12345" in tele)
+        assertFalse("192.168" in tele)
     }
 
     @Test

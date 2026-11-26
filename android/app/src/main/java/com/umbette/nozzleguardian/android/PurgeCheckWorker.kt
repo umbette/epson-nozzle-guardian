@@ -9,6 +9,7 @@ import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import com.umbette.nozzleguardian.R
 import com.umbette.nozzleguardian.engine.DormancyDecisionType
 import com.umbette.nozzleguardian.engine.DormancyEngine
 import com.umbette.nozzleguardian.engine.ProFeature
@@ -57,36 +58,55 @@ class PurgeCheckWorker(
 
             when (decision.type) {
                 DormancyDecisionType.MEDIA_EMPTY_ABORTED -> {
-                    lastSummary = "${updatedProfile.displayName}: ${decision.message}"
+                    lastSummary = applicationContext.getString(R.string.notif_media_empty_body, updatedProfile.displayName)
                     NotificationHelper.showAlert(
                         applicationContext,
-                        "Nozzle Guardian: Inserisci Carta",
-                        "${updatedProfile.displayName}: vassoio vuoto (media-empty).",
+                        applicationContext.getString(R.string.notif_media_empty_title),
+                        lastSummary,
                         notificationId = 1100 + idx,
                     )
                 }
                 DormancyDecisionType.PURGE_REQUIRED -> {
                     val mode = decision.recommendedPurgeMode
                     if (mode != null && canAutoPurge) {
-                        val outcome = client.dispatchPurge(st.printerHost, st.printerPort, mode, status)
+                        val outcome = client.dispatchPurge(
+                            host = st.printerHost,
+                            port = st.printerPort,
+                            mode = mode,
+                            status = status,
+                            printerState = st,
+                        )
                         if (outcome.success) {
                             nextPrinterState = DormancyEngine.markPurgeExecuted(nextPrinterState, mode)
-                            lastSummary = "${updatedProfile.displayName}: spurgo ${mode.name} eseguito (${outcome.docFormat})."
+                            lastSummary = applicationContext.getString(R.string.banner_purge_ok, "${updatedProfile.displayName} • ${mode.name}")
                             NotificationHelper.showAlert(
                                 applicationContext,
-                                "Nozzle Guardian: Spurgo ${mode.name} completato",
-                                "${updatedProfile.displayName}: ${outcome.message}",
+                                applicationContext.getString(R.string.notif_purge_ok_title),
+                                lastSummary,
                                 notificationId = 1001 + idx,
                             )
                         } else {
-                            lastSummary = "${updatedProfile.displayName}: spurgo ${mode.name} fallito (${outcome.message})."
+                            lastSummary = applicationContext.getString(R.string.banner_purge_fail, "${updatedProfile.displayName}: ${outcome.message}")
                         }
                     } else if (mode != null) {
-                        lastSummary = "${updatedProfile.displayName}: canale ${mode.name} inattivo (Auto-Spurgo richiede Pro)."
+                        lastSummary = applicationContext.getString(
+                            R.string.notif_dormant_free_body,
+                            updatedProfile.displayName,
+                            mode.name,
+                        )
+                        NotificationHelper.showAlert(
+                            applicationContext,
+                            applicationContext.getString(R.string.notif_dormant_free_title),
+                            lastSummary,
+                            notificationId = 1200 + idx,
+                        )
                     }
                 }
+                DormancyDecisionType.LASER_ABORTED -> {
+                    lastSummary = applicationContext.getString(R.string.banner_laser_safe, updatedProfile.displayName)
+                }
                 else -> {
-                    lastSummary = "${updatedProfile.displayName}: ${decision.message}"
+                    lastSummary = applicationContext.getString(R.string.banner_all_active, st.inactivityThresholdDays.toString())
                 }
             }
 
@@ -104,20 +124,21 @@ class PurgeCheckWorker(
     }
 
     companion object {
-        private const val UNIQUE_WORK_NAME = "nozzle_guardian_wifi_guard"
+        private const val WORK_NAME = "nozzle_guardian_periodic_check"
 
-        fun schedule(context: Context, intervalHours: Long = 12L) {
+        fun schedulePeriodic(context: Context, enabled: Boolean) {
+            val wm = WorkManager.getInstance(context)
+            if (!enabled) {
+                wm.cancelUniqueWork(WORK_NAME)
+                return
+            }
             val constraints = Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.UNMETERED)
                 .build()
-            val request = PeriodicWorkRequestBuilder<PurgeCheckWorker>(intervalHours, TimeUnit.HOURS)
+            val req = PeriodicWorkRequestBuilder<PurgeCheckWorker>(12, TimeUnit.HOURS)
                 .setConstraints(constraints)
                 .build()
-            WorkManager.getInstance(context).enqueueUniquePeriodicWork(
-                UNIQUE_WORK_NAME,
-                ExistingPeriodicWorkPolicy.UPDATE,
-                request,
-            )
+            wm.enqueueUniquePeriodicWork(WORK_NAME, ExistingPeriodicWorkPolicy.UPDATE, req)
         }
     }
 }

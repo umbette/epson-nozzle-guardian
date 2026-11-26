@@ -4,23 +4,28 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Shield silhouette -->
+    <!-- Adaptive-icon safe-zone Silver Shield (all points inside r <= 30.4dp from center 54,54) -->
     <path
-        android:fillColor="#1E293B"
-        android:strokeColor="#38BDF8"
-        android:strokeWidth="3"
-        android:pathData="M54,18 L82,29 V53 C82,71 69,84 54,90 C39,84 26,71 26,53 V29 Z" />
-    <!-- CMYK micro-purge bars inside shield -->
-    <path
-        android:fillColor="#06B6D4"
-        android:pathData="M35,38 h38 a2.5,2.5 0 0 1 0,5 h-38 a2.5,2.5 0 0 1 0,-5 z" />
-    <path
-        android:fillColor="#EC4899"
-        android:pathData="M35,47 h38 a2.5,2.5 0 0 1 0,5 h-38 a2.5,2.5 0 0 1 0,-5 z" />
-    <path
-        android:fillColor="#EAB308"
-        android:pathData="M35,56 h38 a2.5,2.5 0 0 1 0,5 h-38 a2.5,2.5 0 0 1 0,-5 z" />
+        android:fillColor="#CBD5E1"
+        android:strokeColor="#94A3B8"
+        android:strokeWidth="2.4"
+        android:pathData="M54,24 L76,33 V52 C76,67 66,77 54,83 C42,77 32,67 32,52 V33 Z" />
+    <!-- Subtle silver metallic upper facet -->
     <path
         android:fillColor="#F8FAFC"
-        android:pathData="M39,65 h30 a2.5,2.5 0 0 1 0,5 h-30 a2.5,2.5 0 0 1 0,-5 z" />
+        android:fillAlpha="0.50"
+        android:pathData="M54,25.5 L74.5,34 V50 C64,41 44,41 33.5,50 V34 Z" />
+    <!-- CMYK micro-purge bars (Cyan, Magenta, Yellow, true Ink Black) -->
+    <path
+        android:fillColor="#06B6D4"
+        android:pathData="M39,40 h30 a2.1,2.1 0 0 1 0,4.2 h-30 a2.1,2.1 0 0 1 0,-4.2 z" />
+    <path
+        android:fillColor="#EC4899"
+        android:pathData="M39,47.5 h30 a2.1,2.1 0 0 1 0,4.2 h-30 a2.1,2.1 0 0 1 0,-4.2 z" />
+    <path
+        android:fillColor="#EAB308"
+        android:pathData="M39,55 h30 a2.1,2.1 0 0 1 0,4.2 h-30 a2.1,2.1 0 0 1 0,-4.2 z" />
+    <path
+        android:fillColor="#0F172A"
+        android:pathData="M42,62.5 h24 a2.1,2.1 0 0 1 0,4.2 h-24 a2.1,2.1 0 0 1 0,-4.2 z" />
 </vector>

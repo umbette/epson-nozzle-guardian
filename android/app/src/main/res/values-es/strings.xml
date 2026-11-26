@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Nozzle Guardian</string>
+    <string name="notification_channel_name">Alertas de Impresora</string>
+    <string name="notification_channel_desc">Avisos locales de micro-limpieza y bandeja sin papel</string>
+
+    <string name="nav_printers">Impresoras</string>
+    <string name="nav_scanner">Escáner</string>
+    <string name="nav_pro_info">Pro e Info</string>
+
+    <string name="badge_pro">PRO</string>
+    <string name="badge_free">FREE</string>
+    <string name="badge_multi_pro">MULTI PRO</string>
+    <string name="badge_online">EN LÍNEA</string>
+    <string name="badge_offline">DESCONECTADA</string>
+    <string name="badge_laser">LÁSER</string>
+
+    <string name="close">Cerrar</string>
+    <string name="cancel">Cancelar</string>
+    <string name="save">Guardar</string>
+    <string name="add">Añadir</string>
+    <string name="delete">Eliminar</string>
+    <string name="edit">Editar</string>
+    <string name="back">Atrás</string>
+    <string name="refresh">Actualizar</string>
+
+    <string name="home_locations_title">Lugares e Impresoras</string>
+    <string name="home_location_all">Todos</string>
+    <string name="home_location_manage">Gestionar</string>
+    <string name="home_add_location">Nuevo Lugar</string>
+    <string name="home_edit_location">Editar Lugar</string>
+    <string name="home_delete_location">Eliminar Lugar</string>
+    <string name="home_delete_location_confirm">¿Eliminar \"%1$s\"? Sus impresoras se moverán a otro lugar.</string>
+    <string name="home_location_name_label">Nombre del lugar (ej. Casa, Oficina)</string>
+    <string name="home_location_ssid_label">Wi-Fi SSID (opcional)</string>
+    <string name="home_location_icon_label">Icono del lugar</string>
+    <string name="home_empty_location_title">Sin impresoras en %1$s</string>
+    <string name="home_empty_location_body">Busca por Wi-Fi con mDNS o añade una impresora manualmente.</string>
+    <string name="home_discover_mdns">Buscar Wi-Fi (mDNS)</string>
+    <string name="home_add_printer_manual">Añadir Manualmente</string>
+    <string name="home_discovered_title">Encontradas en Wi-Fi</string>
+    <string name="home_tap_to_configure">Ver detalles</string>
+    <string name="home_schedule_auto_days">Auto • %1$dd</string>
+    <string name="home_schedule_manual_days">Manual • %1$dd</string>
+    <string name="home_schedule_laser">Láser • Solo monitor</string>
+    <string name="home_never_checked">Sin comprobaciones aún — toca para revisar.</string>
+    <string name="home_unconfigured_host">IP no configurada</string>
+
+    <string name="detail_delete_printer">Quitar Impresora</string>
+    <string name="detail_delete_printer_confirm">¿Eliminar \"%1$s\" y su programación local?</string>
+    <string name="detail_counters_bw">B/N</string>
+    <string name="detail_counters_color">Color</string>
+    <string name="detail_counters_total">Total</string>
+    <string name="detail_media_empty">Bandeja vacía (media-empty): carga un folio reutilizable.</string>
+    <string name="detail_laser_title">Impresora Láser / Tóner detectada</string>
+    <string name="detail_laser_body">Buenas noticias: %1$s usa tóner seco por calor y no tiene inyectores líquidos que puedan secarse. Las purgas están desactivadas, pero puedes ver niveles de tóner y contadores.</string>
+    <string name="detail_laser_cta_close">Entendido</string>
+    <string name="detail_purge_card_title">Micro-Purga Directa (Gratis)</string>
+    <string name="detail_purge_k">Negro (K)</string>
+    <string name="detail_purge_color">Color (CMY)</string>
+    <string name="detail_purge_cmyk">CMYK</string>
+    <string name="detail_purge_6tank">6-Tank Foto</string>
+    <string name="detail_purge_pb_gy">PB + Gris</string>
+    <string name="detail_schedule_card_title">Frecuencia y Umbral (Por Modelo)</string>
+    <string name="detail_auto_purge_title">Auto-purga automática en segundo plano</string>
+    <string name="detail_auto_purge_subtitle">Revisión cada 12h en Wi-Fi de casa (avisos de inactividad gratis)</string>
+    <string name="detail_inactivity_threshold">Umbral de inactividad</string>
+    <string name="detail_days_unit">%1$d días</string>
+    <string name="detail_recommended_days">Recomendado para %1$s: cada %2$d días</string>
+    <string name="detail_open_scanner">Abrir Escáner Óptico y Matriz</string>
+    <string name="detail_tech_settings_title">Conexión y Formato</string>
+    <string name="detail_location_assign">Lugar</string>
+    <string name="detail_ip_label">IP / Hostname</string>
+    <string name="detail_port_label">Puerto</string>
+    <string name="detail_ipps_tls">Usar IPPS (TLS local)</string>
+    <string name="detail_verify_now">Verificar ahora</string>
+
+    <string name="scanner_title">Escáner Óptico de Prueba</string>
+    <string name="scanner_subtitle">Imprime una hoja de prueba y fotografíala con buena luz para detectar inyectores obstruidos (1–10).</string>
+    <string name="scanner_guide_steps">1. Imprimir  →  2. Foto con Luz  →  3. Limpieza Precisa</string>
+    <string name="scanner_pro_locked">El análisis con cámara requiere Pro Lifetime. La matriz manual inferior sigue siendo gratuita.</string>
+    <string name="scanner_take_photo">Hacer Foto</string>
+    <string name="scanner_gallery">Galería</string>
+    <string name="scanner_health_label">Salud general (hoja %1$s)</string>
+    <string name="scanner_missing_none">ninguno</string>
+    <string name="scanner_laser_notice">La impresora activa \"%1$s\" es Láser/Tóner. El escaneo de inyectores solo aplica a inyección de tinta.</string>
+    <string name="surgical_title">Matriz Quirúrgica Manual (1–10)</string>
+
+    <string name="pro_plan_active_title">Nozzle Guardian Pro (Lifetime)</string>
+    <string name="pro_plan_free_title">Plan Gratuito (Local)</string>
+    <string name="pro_family_note">Pago único de por vida, sin cuotas mensuales. Un dispositivo Pro protege toda la impresora familiar.</string>
+    <string name="pro_buy_lifetime">Desbloquear Pro Lifetime — %1$s</string>
+    <string name="pro_restore_purchases">Restaurar Compra</string>
+    <string name="telemetry_card_title">Ayúdanos a Mejorar (Telemetría Opt-In)</string>
+    <string name="telemetry_optin_body">Desactivada por defecto. NUNCA recogemos qué imprimes, fotos, archivos, IP, Wi-Fi o email; solo modelo genérico, frecuencia y eficacia de limpieza.</string>
+    <string name="telemetry_toggle_label">Compartir estadísticas anónimas</string>
+    <string name="telemetry_preview_btn">Ver JSON de ejemplo</string>
+</resources>

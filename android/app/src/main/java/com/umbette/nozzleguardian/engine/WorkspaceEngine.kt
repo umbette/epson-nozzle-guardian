@@ -19,7 +19,7 @@ object WorkspaceEngine {
         iconKey: String = "home",
         id: String = "loc_${System.currentTimeMillis()}",
     ): MultiPrinterWorkspace {
-        val cleanName = name.trim().ifBlank { "Nuova Casa" }
+        val cleanName = name.trim().ifBlank { "Home" }
         val newLoc = LocationGroup(
             id = id,
             name = cleanName,
@@ -27,6 +27,25 @@ object WorkspaceEngine {
             iconKey = iconKey,
         )
         return ensureDefaultLocation(workspace).copy(locations = workspace.locations + newLoc)
+    }
+
+    fun updateLocation(
+        workspace: MultiPrinterWorkspace,
+        locationId: String,
+        name: String,
+        wifiSsid: String,
+        iconKey: String,
+    ): MultiPrinterWorkspace {
+        val cleanName = name.trim()
+        if (cleanName.isBlank()) return workspace
+        val updated = workspace.locations.map { loc ->
+            if (loc.id == locationId) {
+                loc.copy(name = cleanName, wifiSsid = wifiSsid.trim(), iconKey = iconKey)
+            } else {
+                loc
+            }
+        }
+        return workspace.copy(locations = updated)
     }
 
     fun removeLocation(workspace: MultiPrinterWorkspace, locationId: String): MultiPrinterWorkspace {

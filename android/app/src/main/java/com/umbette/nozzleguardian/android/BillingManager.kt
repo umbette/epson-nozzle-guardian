@@ -29,17 +29,25 @@ data class BillingProductOffer(
     val rawDetails: ProductDetails,
 )
 
+enum class BillingStatusKind {
+    INIT,
+    READY,
+    UNAVAILABLE_PLAY,
+    SIDELOAD,
+    ACTIVE_PRO,
+}
+
 data class BillingUiState(
     val billingAvailable: Boolean = false,
     val isPlayStoreInstall: Boolean = false,
     val activeProductId: String? = null,
     val offers: List<BillingProductOffer> = emptyList(),
-    val statusText: String = "Inizializzazione Play Billing...",
+    val statusKind: BillingStatusKind = BillingStatusKind.INIT,
 )
 
 /**
- * Google Play Billing (v7.1) integration for Nozzle Guardian Pro.
- * Automatically queries active subscriptions/one-time licenses and acknowledges purchases.
+ * Google Play Billing (v7.1) integration for Nozzle Guardian Lifetime Pro.
+ * Prefers one-time lifetime licenses while still honoring legacy subscriptions if active.
  */
 class BillingManager(
     private val context: Context,
@@ -72,7 +80,7 @@ class BillingManager(
                         it.copy(
                             billingAvailable = true,
                             isPlayStoreInstall = isPlay,
-                            statusText = "Google Play Billing connesso",
+                            statusKind = BillingStatusKind.READY,
                         )
                     }
                     queryAllProductsAndPurchases()
@@ -81,11 +89,7 @@ class BillingManager(
                         it.copy(
                             billingAvailable = false,
                             isPlayStoreInstall = isPlay,
-                            statusText = if (isPlay) {
-                                "Play Billing non disponibile (${result.debugMessage})"
-                            } else {
-                                "Build open-source/sideload: acquisti Play Store attivi su Google Play"
-                            },
+                            statusKind = if (isPlay) BillingStatusKind.UNAVAILABLE_PLAY else BillingStatusKind.SIDELOAD,
                         )
                     }
                 }
@@ -100,6 +104,13 @@ class BillingManager(
     fun end() {
         billingClient?.endConnection()
         billingClient = null
+    }
+
+    fun restorePurchases() {
+        val client = billingClient ?: return
+        if (client.isReady) {
+            queryOwnedPurchases(client)
+        }
     }
 
     fun launchPurchase(activity: Activity, offer: BillingProductOffer): Boolean {
@@ -131,35 +142,6 @@ class BillingManager(
         val client = billingClient ?: return
         if (!client.isReady) return
 
-        val collectedOffers = mutableListOf<BillingProductOffer>()
-
-        val subsProducts = EntitlementPolicy.SUBSCRIPTION_SKUS.map { sku ->
-            QueryProductDetailsParams.Product.newBuilder()
-                .setProductId(sku)
-                .setProductType(BillingClient.ProductType.SUBS)
-                .build()
-        }
-        client.queryProductDetailsAsync(
-            QueryProductDetailsParams.newBuilder().setProductList(subsProducts).build()
-        ) { res, detailsList ->
-            if (res.responseCode == BillingClient.BillingResponseCode.OK) {
-                detailsList.forEach { d ->
-                    val price = d.subscriptionOfferDetails?.firstOrNull()
-                        ?.pricingPhases?.pricingPhaseList?.firstOrNull()?.formattedPrice ?: ""
-                    collectedOffers.add(
-                        BillingProductOffer(
-                            productId = d.productId,
-                            title = d.name,
-                            formattedPrice = price,
-                            isSubscription = true,
-                            rawDetails = d,
-                        )
-                    )
-                }
-                _billingState.update { it.copy(offers = collectedOffers.toList()) }
-            }
-        }
-
         val inappProducts = EntitlementPolicy.ONE_TIME_SKUS.map { sku ->
             QueryProductDetailsParams.Product.newBuilder()
                 .setProductId(sku)
@@ -170,19 +152,17 @@ class BillingManager(
             QueryProductDetailsParams.newBuilder().setProductList(inappProducts).build()
         ) { res, detailsList ->
             if (res.responseCode == BillingClient.BillingResponseCode.OK) {
-                detailsList.forEach { d ->
+                val offers = detailsList.map { d ->
                     val price = d.oneTimePurchaseOfferDetails?.formattedPrice ?: ""
-                    collectedOffers.add(
-                        BillingProductOffer(
-                            productId = d.productId,
-                            title = d.name,
-                            formattedPrice = price,
-                            isSubscription = false,
-                            rawDetails = d,
-                        )
+                    BillingProductOffer(
+                        productId = d.productId,
+                        title = d.name,
+                        formattedPrice = price,
+                        isSubscription = false,
+                        rawDetails = d,
                     )
                 }
-                _billingState.update { it.copy(offers = collectedOffers.toList()) }
+                _billingState.update { it.copy(offers = offers) }
             }
         }
 
@@ -190,20 +170,20 @@ class BillingManager(
     }
 
     private fun queryOwnedPurchases(client: BillingClient) {
-        val allPurchases = mutableListOf<Purchase>()
         client.queryPurchasesAsync(
-            QueryPurchasesParams.newBuilder().setProductType(BillingClient.ProductType.SUBS).build()
-        ) { resSubs, subsList ->
-            if (resSubs.responseCode == BillingClient.BillingResponseCode.OK) {
-                allPurchases.addAll(subsList)
+            QueryPurchasesParams.newBuilder().setProductType(BillingClient.ProductType.INAPP).build()
+        ) { resInapp, inappList ->
+            val ownedInapp = if (resInapp.responseCode == BillingClient.BillingResponseCode.OK) inappList else emptyList()
+            if (ownedInapp.any { it.purchaseState == Purchase.PurchaseState.PURCHASED }) {
+                handlePurchases(ownedInapp)
+                return@queryPurchasesAsync
             }
+            // Fallback: honor any legacy active subscription cleanly without exposing new recurring SKUs.
             client.queryPurchasesAsync(
-                QueryPurchasesParams.newBuilder().setProductType(BillingClient.ProductType.INAPP).build()
-            ) { resInapp, inappList ->
-                if (resInapp.responseCode == BillingClient.BillingResponseCode.OK) {
-                    allPurchases.addAll(inappList)
-                }
-                handlePurchases(allPurchases)
+                QueryPurchasesParams.newBuilder().setProductType(BillingClient.ProductType.SUBS).build()
+            ) { resSubs, subsList ->
+                val ownedSubs = if (resSubs.responseCode == BillingClient.BillingResponseCode.OK) subsList else emptyList()
+                handlePurchases(ownedSubs)
             }
         }
     }
@@ -218,10 +198,23 @@ class BillingManager(
                 billingClient?.acknowledgePurchase(ackParams) { }
             }
             val sku = valid.products.firstOrNull()
-            _billingState.update { it.copy(activeProductId = sku, statusText = "Licenza Pro attiva ($sku)") }
+            _billingState.update {
+                it.copy(
+                    activeProductId = sku,
+                    statusKind = BillingStatusKind.ACTIVE_PRO,
+                )
+            }
             onProStateResolved(PlanTier.PRO, "play_billing", sku)
         } else {
-            _billingState.update { it.copy(activeProductId = null) }
+            val isPlay = detectPlayStoreInstaller(context)
+            _billingState.update {
+                it.copy(
+                    activeProductId = null,
+                    statusKind = if (billingClient?.isReady == true) BillingStatusKind.READY
+                    else if (isPlay) BillingStatusKind.UNAVAILABLE_PLAY
+                    else BillingStatusKind.SIDELOAD,
+                )
+            }
             onProStateResolved(PlanTier.FREE, "free", null)
         }
     }

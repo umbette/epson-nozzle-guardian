@@ -32,11 +32,13 @@ data class EntitlementState(
 }
 
 object EntitlementPolicy {
-    const val SKU_PRO_MONTHLY = "nozzle_guardian_pro_monthly"
-    const val SKU_PRO_YEARLY = "nozzle_guardian_pro_yearly"
     const val SKU_PRO_LIFETIME = "nozzle_guardian_pro_lifetime"
+    // Legacy subscription SKUs kept only for honoring pre-existing Play Store subscribers.
+    const val SKU_PRO_YEARLY = "nozzle_guardian_pro_yearly"
+    const val SKU_PRO_MONTHLY = "nozzle_guardian_pro_monthly"
 
-    val SUBSCRIPTION_SKUS = listOf(SKU_PRO_MONTHLY, SKU_PRO_YEARLY)
+    val SUBSCRIPTION_SKUS = emptyList<String>()
+    val LEGACY_SUBSCRIPTION_SKUS = listOf(SKU_PRO_YEARLY, SKU_PRO_MONTHLY)
     val ONE_TIME_SKUS = listOf(SKU_PRO_LIFETIME)
 
     fun canAddPrinter(entitlement: EntitlementState, workspace: MultiPrinterWorkspace): Boolean =
@@ -44,6 +46,60 @@ object EntitlementPolicy {
 
     fun canAddLocation(entitlement: EntitlementState, workspace: MultiPrinterWorkspace): Boolean =
         entitlement.isProActive || workspace.locations.isEmpty()
+}
+
+data class TelemetrySettings(
+    val optIn: Boolean = false,
+    val installId: String = "",
+    val endpointUrl: String = "",
+)
+
+/**
+ * Privacy-preserving anonymized telemetry serializer (Opt-In only).
+ * Never includes IPs, Wi-Fi SSIDs, emails, document filenames, photos, or printer serial numbers.
+ */
+object TelemetryPayloadBuilder {
+    private fun esc(value: String): String = value.replace("\\", "\\\\").replace("\"", "\\\"")
+
+    fun sanitizeModelFamily(makeAndModel: String?): String {
+        val raw = (makeAndModel ?: "Generic IPP").trim()
+        // Strip potential trailing serial-like tokens inside brackets
+        return raw.replace(Regex("\\([^)]*\\)"), "").trim().ifBlank { "Generic IPP" }
+    }
+
+    fun buildEventJson(
+        installId: String,
+        appVersion: String,
+        tier: PlanTier,
+        brand: BrandBadge,
+        modelFamily: String?,
+        headTechnology: HeadTechnology,
+        inkProfile: String,
+        preferredFormat: String,
+        inactivityDays: Int,
+        eventType: String,
+        outcomeSuccess: Boolean,
+        healthBeforePct: Int? = null,
+        healthAfterPct: Int? = null,
+    ): String {
+        val sb = StringBuilder(256)
+        sb.append("{\"schema\":1")
+        sb.append(",\"installId\":\"").append(esc(installId)).append("\"")
+        sb.append(",\"appVersion\":\"").append(esc(appVersion)).append("\"")
+        sb.append(",\"tier\":\"").append(tier.name).append("\"")
+        sb.append(",\"brand\":\"").append(brand.name).append("\"")
+        sb.append(",\"modelFamily\":\"").append(esc(sanitizeModelFamily(modelFamily))).append("\"")
+        sb.append(",\"headTech\":\"").append(headTechnology.name).append("\"")
+        sb.append(",\"inkProfile\":\"").append(esc(inkProfile)).append("\"")
+        sb.append(",\"format\":\"").append(esc(preferredFormat)).append("\"")
+        sb.append(",\"thresholdDays\":").append(inactivityDays)
+        sb.append(",\"event\":\"").append(esc(eventType)).append("\"")
+        sb.append(",\"success\":").append(outcomeSuccess)
+        if (healthBeforePct != null) sb.append(",\"healthBeforePct\":").append(healthBeforePct)
+        if (healthAfterPct != null) sb.append(",\"healthAfterPct\":").append(healthAfterPct)
+        sb.append('}')
+        return sb.toString()
+    }
 }
 
 data class AccountSession(

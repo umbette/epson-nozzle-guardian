@@ -87,12 +87,12 @@ def run_desktop(
 
             img = Image.new("RGBA", (64, 64), (11, 17, 32, 255))
             draw = ImageDraw.Draw(img)
-            shield_pts = [(32, 8), (52, 16), (52, 34), (48, 44), (41, 52), (32, 57), (23, 52), (16, 44), (12, 34), (12, 16)]
-            draw.polygon(shield_pts, fill=(24, 38, 61, 255), outline=(56, 189, 248, 255), width=3)
-            draw.rounded_rectangle([19, 22, 45, 26], radius=2, fill=(6, 182, 212, 255))
-            draw.rounded_rectangle([19, 28, 45, 32], radius=2, fill=(236, 72, 153, 255))
-            draw.rounded_rectangle([19, 34, 45, 38], radius=2, fill=(234, 179, 8, 255))
-            draw.rounded_rectangle([22, 40, 42, 44], radius=2, fill=(248, 250, 252, 255))
+            shield_pts = [(32, 12), (46, 18), (46, 32), (43, 40), (38, 47), (32, 51), (26, 47), (21, 40), (18, 32), (18, 18)]
+            draw.polygon(shield_pts, fill=(216, 224, 234, 255), outline=(148, 163, 184, 255), width=2)
+            draw.rounded_rectangle([22, 23, 42, 26], radius=1, fill=(6, 182, 212, 255))
+            draw.rounded_rectangle([22, 28, 42, 31], radius=1, fill=(236, 72, 153, 255))
+            draw.rounded_rectangle([22, 33, 42, 36], radius=1, fill=(234, 179, 8, 255))
+            draw.rounded_rectangle([24, 38, 40, 41], radius=1, fill=(15, 23, 42, 255))
 
             server_cfg = uvicorn.Config(app, host=host, port=port, log_level="info")
             server = uvicorn.Server(server_cfg)

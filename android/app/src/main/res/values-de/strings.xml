@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Nozzle Guardian</string>
+    <string name="notification_channel_name">Drucker-Hinweise</string>
+    <string name="notification_channel_desc">Lokale Hinweise zu Düsenspülung und leerem Papierfach</string>
+
+    <string name="nav_printers">Drucker</string>
+    <string name="nav_scanner">Scanner</string>
+    <string name="nav_pro_info">Pro &amp; Info</string>
+
+    <string name="badge_online">ONLINE</string>
+    <string name="badge_offline">OFFLINE</string>
+    <string name="close">Schließen</string>
+    <string name="cancel">Abbrechen</string>
+    <string name="save">Speichern</string>
+    <string name="add">Hinzufügen</string>
+    <string name="delete">Löschen</string>
+    <string name="edit">Bearbeiten</string>
+    <string name="back">Zurück</string>
+
+    <string name="home_locations_title">Standorte &amp; Drucker</string>
+    <string name="home_location_all">Alle</string>
+    <string name="home_location_manage">Verwalten</string>
+    <string name="home_add_location">Neuer Standort</string>
+    <string name="home_edit_location">Standort bearbeiten</string>
+    <string name="home_discover_mdns">WLAN-Suche (mDNS)</string>
+    <string name="home_add_printer_manual">Manuell hinzufügen</string>
+    <string name="detail_laser_title">Laser- / Tonerdrucker erkannt</string>
+    <string name="detail_laser_body">Gute Nachricht: %1$s nutzt Trockentoner ohne flüssige Tinte. Düsenspülungen sind deaktiviert; Tonerstand und Seitenzähler bleiben aktiv.</string>
+    <string name="detail_purge_card_title">Direkte Mikro-Spülung (Gratis)</string>
+    <string name="detail_schedule_card_title">Intervall &amp; Schwellenwert (Je Modell)</string>
+    <string name="detail_inactivity_threshold">Inaktivitäts-Schwelle</string>
+    <string name="detail_days_unit">%1$d Tage</string>
+    <string name="detail_recommended_days">Empfohlen für %1$s: alle %2$d Tage</string>
+    <string name="detail_verify_now">Jetzt prüfen</string>
+    <string name="scanner_title">Optischer Testblatt-Scanner</string>
+    <string name="scanner_take_photo">Foto aufnehmen</string>
+    <string name="scanner_gallery">Galerie</string>
+    <string name="pro_plan_active_title">Nozzle Guardian Pro (Lifetime)</string>
+    <string name="pro_plan_free_title">Gratis-Tarif (Lokal)</string>
+    <string name="pro_family_note">Einmaliger Kauf ohne Abo. Ein Pro-Gerät schützt den Familiendrucker automatisch.</string>
+    <string name="pro_buy_lifetime">Pro Lifetime freischalten — %1$s</string>
+    <string name="pro_restore_purchases">Kauf wiederherstellen</string>
+    <string name="telemetry_card_title">Hilf uns, besser zu werden (Opt-In)</string>
+    <string name="telemetry_optin_body">Standardmäßig aus. Wir erfassen NIEMALS Druckinhalte, Fotos, IP-Adressen, WLAN-SSIDs oder E-Mails – nur anonyme Modell- und Spüldaten.</string>
+</resources>

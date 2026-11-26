@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Nozzle Guardian</string>
+    <string name="notification_channel_name">Alertes Imprimante</string>
+    <string name="notification_channel_desc">Notifications locales de purge préventive et bac papier vide</string>
+
+    <string name="nav_printers">Imprimantes</string>
+    <string name="nav_scanner">Scanner</string>
+    <string name="nav_pro_info">Pro &amp; Info</string>
+
+    <string name="badge_online">EN LIGNE</string>
+    <string name="badge_offline">HORS LIGNE</string>
+    <string name="close">Fermer</string>
+    <string name="cancel">Annuler</string>
+    <string name="save">Enregistrer</string>
+    <string name="add">Ajouter</string>
+    <string name="delete">Supprimer</string>
+    <string name="edit">Modifier</string>
+    <string name="back">Retour</string>
+
+    <string name="home_locations_title">Lieux &amp; Imprimantes</string>
+    <string name="home_location_all">Tous</string>
+    <string name="home_location_manage">Gérer</string>
+    <string name="home_add_location">Nouveau Lieu</string>
+    <string name="home_edit_location">Modifier le Lieu</string>
+    <string name="home_discover_mdns">Rechercher Wi-Fi (mDNS)</string>
+    <string name="home_add_printer_manual">Ajouter Manuellement</string>
+    <string name="detail_laser_title">Imprimante Laser / Toner détectée</string>
+    <string name="detail_laser_body">Bonne nouvelle : %1$s utilise du toner sec et n\'a pas de buses liquides pouvant sécher. Les purges sont désactivées ; le suivi toner et les compteurs restent actifs.</string>
+    <string name="detail_purge_card_title">Micro-Purge Directe (Gratuit)</string>
+    <string name="detail_schedule_card_title">Fréquence &amp; Seuil (Par Modèle)</string>
+    <string name="detail_inactivity_threshold">Seuil d\'inactivité</string>
+    <string name="detail_days_unit">%1$d jours</string>
+    <string name="detail_recommended_days">Conseillé pour %1$s : tous les %2$d jours</string>
+    <string name="detail_verify_now">Vérifier maintenant</string>
+    <string name="scanner_title">Scanner Optique de Mire</string>
+    <string name="scanner_take_photo">Prendre Photo</string>
+    <string name="scanner_gallery">Galerie</string>
+    <string name="pro_plan_active_title">Nozzle Guardian Pro (À vie)</string>
+    <string name="pro_plan_free_title">Offre Gratuite (Locale)</string>
+    <string name="pro_family_note">Paiement unique à vie, sans abonnement mensuel. Un appareil Pro protège l\'imprimante familiale.</string>
+    <string name="pro_buy_lifetime">Débloquer Pro à vie — %1$s</string>
+    <string name="pro_restore_purchases">Restaurer l\'achat</string>
+    <string name="telemetry_card_title">Aidez-nous à Améliorer (Opt-In)</string>
+    <string name="telemetry_optin_body">Désactivée par défaut. Aucune donnée sur vos impressions, photos, IP, Wi-Fi ou e-mail ; uniquement des statistiques anonymes de modèle et d\'efficacité.</string>
+</resources>

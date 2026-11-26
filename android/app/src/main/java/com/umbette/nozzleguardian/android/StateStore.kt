@@ -131,10 +131,31 @@ class StateStore(private val context: Context) {
         }
     }
 
-    fun getLastSummary(): String = prefs.getString("last_summary", "Nessun controllo ancora eseguito.") ?: ""
+    fun getLastSummary(): String = prefs.getString("last_summary", "") ?: ""
 
     fun saveLastSummary(summary: String) {
         prefs.edit().putString("last_summary", summary).apply()
+    }
+
+    fun loadTelemetrySettings(): com.umbette.nozzleguardian.engine.TelemetrySettings {
+        val id = prefs.getString("telemetry_install_id", null)?.takeIf { it.isNotBlank() }
+            ?: java.util.UUID.randomUUID().toString().also {
+                prefs.edit().putString("telemetry_install_id", it).apply()
+            }
+        return com.umbette.nozzleguardian.engine.TelemetrySettings(
+            optIn = prefs.getBoolean("telemetry_opt_in", false),
+            installId = id,
+            endpointUrl = prefs.getString("telemetry_endpoint_url", "") ?: "",
+        )
+    }
+
+    fun saveTelemetrySettings(settings: com.umbette.nozzleguardian.engine.TelemetrySettings) {
+        prefs.edit().apply {
+            putBoolean("telemetry_opt_in", settings.optIn)
+            putString("telemetry_install_id", settings.installId)
+            putString("telemetry_endpoint_url", settings.endpointUrl.trim())
+            apply()
+        }
     }
 
     private fun loadLegacySingleState(): GuardianState = GuardianState(

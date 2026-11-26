@@ -1,14 +1,26 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" width="108" height="108">
+  <defs>
+    <linearGradient id="shieldSilver" x1="20%" y1="15%" x2="85%" y2="88%">
+      <stop offset="0%" stop-color="#F8FAFC"/>
+      <stop offset="48%" stop-color="#CBD5E1"/>
+      <stop offset="100%" stop-color="#94A3B8"/>
+    </linearGradient>
+    <linearGradient id="shieldRim" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F8FAFC"/>
+      <stop offset="55%" stop-color="#64748B"/>
+      <stop offset="100%" stop-color="#38BDF8"/>
+    </linearGradient>
+  </defs>
   <rect width="108" height="108" rx="22" fill="#0B1120"/>
   <path
-    d="M54,14 L84,26 V53 C84,72 70,86 54,93 C38,86 24,72 24,53 V26 Z"
-    fill="#18263D"
-    stroke="#38BDF8"
-    stroke-width="3.5"
+    d="M54,20 L80,30 V52 C80,69 68,81 54,87 C40,81 28,69 28,52 V30 Z"
+    fill="url(#shieldSilver)"
+    stroke="url(#shieldRim)"
+    stroke-width="2.6"
     stroke-linejoin="round"
   />
-  <rect x="33" y="36" width="42" height="6" rx="3" fill="#06B6D4"/>
-  <rect x="33" y="45" width="42" height="6" rx="3" fill="#EC4899"/>
-  <rect x="33" y="54" width="42" height="6" rx="3" fill="#EAB308"/>
-  <rect x="38" y="63" width="32" height="6" rx="3" fill="#F8FAFC"/>
+  <rect x="36" y="38" width="36" height="5" rx="2.5" fill="#06B6D4"/>
+  <rect x="36" y="46.5" width="36" height="5" rx="2.5" fill="#EC4899"/>
+  <rect x="36" y="55" width="36" height="5" rx="2.5" fill="#EAB308"/>
+  <rect x="40" y="63.5" width="28" height="5" rx="2.5" fill="#0F172A"/>
 </svg>
