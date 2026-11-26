@@ -33,6 +33,10 @@
     <string name="detail_purge_cmyk">Alle</string>
     <string name="subtab_clean_verify">Spülen &amp; Prüfen</string>
     <string name="subtab_settings">Einstellungen</string>
+    <string name="purge_select_hint">Option oben wählen und Druck bestätigen</string>
+    <string name="purge_confirm_btn">Bestätigen &amp; Drucken: %1$s</string>
+    <string name="surgical_clean_selected_btn">Auswahl spülen (%1$d)</string>
+    <string name="surgical_clear_btn">Leeren</string>
     <string name="detail_schedule_card_title">Intervall &amp; Schwellenwert (Je Modell)</string>
     <string name="detail_inactivity_threshold">Inaktivitäts-Schwelle</string>
     <string name="detail_days_unit">%1$d Tage</string>

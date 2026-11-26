@@ -543,6 +543,11 @@ class NozzleGuardianViewModel(application: Application) : AndroidViewModel(appli
     }
 
     fun triggerSurgicalPurge(channel: NozzleChannel, step: Int, bursts: Int = 5, printerId: String? = _uiState.value.activePrinter?.id) {
+        triggerSurgicalBatchPurge(listOf(channel to step), bursts = bursts, printerId = printerId)
+    }
+
+    fun triggerSurgicalBatchPurge(targets: List<Pair<NozzleChannel, Int>>, bursts: Int = 5, printerId: String? = _uiState.value.activePrinter?.id) {
+        if (targets.isEmpty()) return
         viewModelScope.launch {
             val ws = store.loadWorkspace()
             val target = printerId?.let { id -> ws.printers.firstOrNull { it.id == id } } ?: ws.activePrinter
@@ -551,20 +556,25 @@ class NozzleGuardianViewModel(application: Application) : AndroidViewModel(appli
                 _uiState.update { it.copy(banner = UiBanner(BannerSeverity.WARNING, R.string.banner_configure_first)) }
                 return@launch
             }
+            val label = if (targets.size == 1) {
+                "${targets.first().first.name} #${targets.first().second}"
+            } else {
+                "${targets.size} nozzles"
+            }
             _uiState.update {
                 it.copy(
                     isBusy = true,
-                    banner = UiBanner(BannerSeverity.INFO, R.string.banner_surgical_running, listOf("${channel.name} #$step")),
+                    banner = UiBanner(BannerSeverity.INFO, R.string.banner_surgical_running, listOf(label)),
                 )
             }
             val cachedStatus = _uiState.value.printerStatuses[target.id]
-            val outcome = client.dispatchSurgicalPurge(cfg.printerHost, cfg.printerPort, channel, step, bursts, cachedStatus, cfg)
-            sendTelemetryIfOptIn(target, cachedStatus, cfg, "surgical_${channel.code}", outcome.success)
+            val outcome = client.dispatchSurgicalBatchPurge(cfg.printerHost, cfg.printerPort, targets, bursts, cachedStatus, cfg)
+            sendTelemetryIfOptIn(target, cachedStatus, cfg, "surgical_batch_${targets.size}", outcome.success)
             _uiState.update {
                 it.copy(
                     isBusy = false,
                     banner = if (outcome.success) {
-                        UiBanner(BannerSeverity.SUCCESS, R.string.banner_purge_ok, listOf("${channel.name} #$step"))
+                        UiBanner(BannerSeverity.SUCCESS, R.string.banner_purge_ok, listOf(label))
                     } else {
                         UiBanner(BannerSeverity.ERROR, R.string.banner_purge_fail, listOf(outcome.message))
                     },

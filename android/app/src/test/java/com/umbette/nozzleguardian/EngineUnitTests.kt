@@ -219,6 +219,15 @@ class EngineUnitTests {
         assertTrue("\"modelFamily\":\"EPSON ET-2810\"" in tele)
         assertFalse("SN12345" in tele)
         assertFalse("192.168" in tele)
+
+        val gen = PatternGenerator(dpi = 300)
+        val batchThermal = gen.buildSurgicalBatchSheet(
+            targets = listOf(NozzleChannel.CYAN to 2, NozzleChannel.MAGENTA to 2, NozzleChannel.YELLOW to 6),
+            requestedBursts = 7,
+            headTechnology = HeadTechnology.THERMAL,
+        )
+        assertEquals(3, batchThermal.effectiveBursts)
+        assertFalse(batchThermal.surface.isGrayscale)
     }
 
     @Test

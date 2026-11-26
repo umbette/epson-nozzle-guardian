@@ -63,6 +63,11 @@
     <string name="detail_purge_pb_gy">Foto N+G</string>
     <string name="clean_step2_title">2. Verificar Hoja Impresa</string>
     <string name="clean_manual_toggle">O toca manualmente el paso faltante (1–10)</string>
+    <string name="purge_select_hint">Selecciona una opción arriba y confirma para imprimir</string>
+    <string name="purge_confirm_btn">Confirmar e Imprimir: %1$s</string>
+    <string name="surgical_multi_hint">Marca uno o más pasos por color y luego inicia la limpieza:</string>
+    <string name="surgical_clean_selected_btn">Limpiar Seleccionados (%1$d)</string>
+    <string name="surgical_clear_btn">Borrar</string>
     <string name="subtab_clean_verify">Limpiar y Verificar</string>
     <string name="subtab_settings">Ajustes</string>
     <string name="detail_schedule_card_title">Frecuencia y Umbral (Por Modelo)</string>

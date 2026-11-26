@@ -284,80 +284,111 @@ fun PrinterDetailScreen(
                 )
             }
         } else {
-            // Step 1: Print Test/Purge with visual color swatches ("Nero", "Colori", "Tutti")
+            // Step 1: Neutral selectable chips (none pre-highlighted!) + explicit Confirm & Print CTA
             ModernCard {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Icon(Icons.Filled.CleaningServices, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(18.dp))
                     Text(stringResource(R.string.detail_purge_card_title), style = MaterialTheme.typography.titleSmall)
                 }
                 val canPurge = cfg.printerHost.isNotBlank() && !ui.isBusy
+                var selectedMode by remember(profile.id) { mutableStateOf<PurgeMode?>(null) }
+
+                @Composable
+                fun PurgeChoiceChip(
+                    mode: PurgeMode,
+                    title: String,
+                    swatches: List<Color>,
+                    modifier: Modifier = Modifier,
+                ) {
+                    val isSelected = selectedMode == mode
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = modifier
+                            .height(54.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(if (isSelected) AccentCyan.copy(alpha = 0.20f) else CardSurfaceAlt)
+                            .border(
+                                width = if (isSelected) 1.6.dp else 1.dp,
+                                color = if (isSelected) AccentCyan else CardBorder,
+                                shape = RoundedCornerShape(12.dp),
+                            )
+                            .clickable(enabled = canPurge) {
+                                selectedMode = if (isSelected) null else mode
+                            }
+                            .padding(horizontal = 6.dp, vertical = 6.dp),
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            InkSwatchRow(swatches)
+                            Text(
+                                text = title,
+                                maxLines = 1,
+                                softWrap = false,
+                                fontSize = 12.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isSelected) AccentCyan else TextPrimary,
+                            )
+                        }
+                    }
+                }
+
+                val labelK = stringResource(R.string.detail_purge_k)
+                val labelColor = stringResource(R.string.detail_purge_color)
+                val labelAll = stringResource(R.string.detail_purge_cmyk)
+                val labelAll6 = stringResource(R.string.detail_purge_6tank)
+                val labelPbGy = stringResource(R.string.detail_purge_pb_gy)
+
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    FilledTonalButton(
-                        onClick = { viewModel.triggerManualPurge(PurgeMode.K, profile.id) },
-                        enabled = canPurge,
-                        shape = RoundedCornerShape(12.dp),
-                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp),
-                        modifier = Modifier.weight(1f).height(54.dp),
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                            InkSwatchRow(listOf(SwatchBlack))
-                            Text(stringResource(R.string.detail_purge_k), maxLines = 1, softWrap = false, fontSize = 12.sp)
-                        }
-                    }
-                    FilledTonalButton(
-                        onClick = { viewModel.triggerManualPurge(PurgeMode.CMY, profile.id) },
-                        enabled = canPurge,
-                        shape = RoundedCornerShape(12.dp),
-                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp),
-                        modifier = Modifier.weight(1f).height(54.dp),
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                            InkSwatchRow(listOf(SwatchCyan, SwatchMagenta, SwatchYellow))
-                            Text(stringResource(R.string.detail_purge_color), maxLines = 1, softWrap = false, fontSize = 12.sp)
-                        }
-                    }
-                    Button(
-                        onClick = { viewModel.triggerManualPurge(PurgeMode.CMYK, profile.id) },
-                        enabled = canPurge,
-                        shape = RoundedCornerShape(12.dp),
-                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp),
-                        modifier = Modifier.weight(1f).height(54.dp),
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                            InkSwatchRow(listOf(SwatchCyan, SwatchMagenta, SwatchYellow, SwatchBlack))
-                            Text(stringResource(R.string.detail_purge_cmyk), maxLines = 1, softWrap = false, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                        }
-                    }
+                    PurgeChoiceChip(PurgeMode.K, labelK, listOf(SwatchBlack), Modifier.weight(1f))
+                    PurgeChoiceChip(PurgeMode.CMY, labelColor, listOf(SwatchCyan, SwatchMagenta, SwatchYellow), Modifier.weight(1f))
+                    PurgeChoiceChip(PurgeMode.CMYK, labelAll, listOf(SwatchCyan, SwatchMagenta, SwatchYellow, SwatchBlack), Modifier.weight(1f))
                 }
                 val isSixTank = inkProfile == "cmyk6" || st?.inkProfile == "cmyk6" || (st?.tankCount ?: 4) >= 6
                 if (isSixTank) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                        Button(
-                            onClick = { viewModel.triggerManualPurge(PurgeMode.CMYK6, profile.id) },
-                            enabled = canPurge,
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F766E), contentColor = Color.White),
-                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp),
-                            modifier = Modifier.weight(1f).height(52.dp),
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                InkSwatchRow(listOf(SwatchCyan, SwatchMagenta, SwatchYellow, SwatchBlack, SwatchGray))
-                                Text(stringResource(R.string.detail_purge_6tank), maxLines = 1, softWrap = false, fontSize = 12.sp)
-                            }
-                        }
-                        FilledTonalButton(
-                            onClick = { viewModel.triggerManualPurge(PurgeMode.PB_GY, profile.id) },
-                            enabled = canPurge,
-                            shape = RoundedCornerShape(12.dp),
-                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp),
-                            modifier = Modifier.weight(1f).height(52.dp),
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                InkSwatchRow(listOf(SwatchBlack, SwatchGray))
-                                Text(stringResource(R.string.detail_purge_pb_gy), maxLines = 1, softWrap = false, fontSize = 12.sp)
-                            }
-                        }
+                        PurgeChoiceChip(
+                            PurgeMode.CMYK6,
+                            labelAll6,
+                            listOf(SwatchCyan, SwatchMagenta, SwatchYellow, SwatchBlack, SwatchGray),
+                            Modifier.weight(1f),
+                        )
+                        PurgeChoiceChip(PurgeMode.PB_GY, labelPbGy, listOf(SwatchBlack, SwatchGray), Modifier.weight(1f))
                     }
+                }
+
+                val selectedTitle = when (selectedMode) {
+                    PurgeMode.K -> labelK
+                    PurgeMode.CMY -> labelColor
+                    PurgeMode.CMYK -> labelAll
+                    PurgeMode.CMYK6 -> labelAll6
+                    PurgeMode.PB_GY -> labelPbGy
+                    null -> null
+                }
+
+                if (selectedTitle == null) {
+                    Text(stringResource(R.string.purge_select_hint), style = MaterialTheme.typography.bodySmall, color = TextMuted)
+                }
+
+                Button(
+                    onClick = {
+                        selectedMode?.let { mode ->
+                            viewModel.triggerManualPurge(mode, profile.id)
+                            selectedMode = null
+                        }
+                    },
+                    enabled = canPurge && selectedMode != null,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth().height(46.dp),
+                ) {
+                    Text(
+                        text = if (selectedTitle != null) {
+                            stringResource(R.string.purge_confirm_btn, selectedTitle)
+                        } else {
+                            stringResource(R.string.purge_select_hint)
+                        },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        fontWeight = FontWeight.SemiBold,
+                    )
                 }
             }
 

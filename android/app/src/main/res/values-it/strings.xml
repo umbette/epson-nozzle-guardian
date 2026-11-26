@@ -63,6 +63,11 @@
     <string name="detail_purge_pb_gy">Foto N+G</string>
     <string name="clean_step2_title">2. Verifica il Foglio Stampato</string>
     <string name="clean_manual_toggle">Oppure tocca a mano il gradino mancante (1–10)</string>
+    <string name="purge_select_hint">Seleziona una opzione sopra, poi conferma per stampare</string>
+    <string name="purge_confirm_btn">Conferma &amp; Stampa: %1$s</string>
+    <string name="surgical_multi_hint">Seleziona uno o più ugelli mancanti su ogni colore, poi avvia la pulizia:</string>
+    <string name="surgical_clean_selected_btn">Pulisci Selezionati (%1$d)</string>
+    <string name="surgical_clear_btn">Azzera</string>
     <string name="subtab_clean_verify">Pulizia &amp; Verifica</string>
     <string name="subtab_settings">Impostazioni</string>
     <string name="detail_schedule_card_title">Frequenza &amp; Soglia (Per Modello)</string>

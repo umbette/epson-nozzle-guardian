@@ -243,8 +243,24 @@ class PatternGenerator(
         requestedBursts: Int = 5,
         headTechnology: HeadTechnology = HeadTechnology.PIEZO,
         forceRgb: Boolean = false,
+    ): SurgicalSheetResult = buildSurgicalBatchSheet(
+        targets = listOf(channel to step),
+        requestedBursts = requestedBursts,
+        headTechnology = headTechnology,
+        forceRgb = forceRgb,
+    )
+
+    fun buildSurgicalBatchSheet(
+        targets: List<Pair<NozzleChannel, Int>>,
+        requestedBursts: Int = 5,
+        headTechnology: HeadTechnology = HeadTechnology.PIEZO,
+        forceRgb: Boolean = false,
     ): SurgicalSheetResult {
-        val clampedStep = step.coerceIn(1, 10)
+        val cleanTargets = targets
+            .map { (ch, st) -> ch to st.coerceIn(1, 10) }
+            .distinct()
+        require(cleanTargets.isNotEmpty()) { "At least one surgical target is required." }
+
         val rawBursts = requestedBursts.coerceIn(1, 9)
         val isThermal = headTechnology == HeadTechnology.THERMAL
         val effectiveBursts = if (isThermal) minOf(rawBursts, 3) else rawBursts
@@ -252,26 +268,43 @@ class PatternGenerator(
 
         val colH = mm(18.0)
         val pitch = colH / 10.0
-        val ladderY0 = computeLadderY(if (channel == NozzleChannel.BLACK) 1 else 4)
-        val targetY = (ladderY0 + (clampedStep - 0.5) * pitch).toInt()
+        val allBlackOnly = cleanTargets.all { it.first == NozzleChannel.BLACK }
+        val ladderY0 = computeLadderY(if (allBlackOnly) 1 else 4)
 
         val x0 = sideMarginPx
         val x1 = x0 + stripeWidthPx
-        val surface = RasterSurface(widthPx, heightPx, isGrayscale = (channel == NozzleChannel.BLACK && !forceRgb))
+        val surface = RasterSurface(widthPx, heightPx, isGrayscale = (allBlackOnly && !forceRgb))
         val hdrScale = maxOf(2, mm(0.36))
+        val headerLabel = if (cleanTargets.size == 1) {
+            val (ch, st) = cleanTargets.first()
+            "SURGICAL ${ch.name} #$st"
+        } else {
+            "SURGICAL BATCH ${cleanTargets.size}"
+        }
         drawText(
             surface,
             x0,
-            maxOf(10, targetY - mm(5.5)),
-            "SURGICAL ${channel.name} #$clampedStep",
+            maxOf(10, ladderY0 - mm(6.0)),
+            headerLabel,
             hdrScale,
-            channel.argb,
+            cleanTargets.first().first.argb,
         )
+
         val half = effectiveBursts / 2
         val thick = maxOf(2, mm(0.25))
-        for (b in -half..half) {
-            val ly = targetY + b * linePitch
-            surface.drawLine(x0, ly, x1, ly, channel.argb, thick)
+        val groupedByStep = cleanTargets.groupBy { it.second }
+        for ((stepNum, stepTargets) in groupedByStep) {
+            val targetY = (ladderY0 + (stepNum - 0.5) * pitch).toInt()
+            val segCount = stepTargets.size
+            val segWidth = (x1 - x0) / segCount
+            stepTargets.forEachIndexed { idx, (ch, _) ->
+                val sx0 = x0 + idx * segWidth
+                val sx1 = if (idx == segCount - 1) x1 else sx0 + segWidth - mm(1.5)
+                for (b in -half..half) {
+                    val ly = targetY + b * linePitch
+                    surface.drawLine(sx0, ly, sx1, ly, ch.argb, thick)
+                }
+            }
         }
         return SurgicalSheetResult(surface = surface, effectiveBursts = effectiveBursts)
     }

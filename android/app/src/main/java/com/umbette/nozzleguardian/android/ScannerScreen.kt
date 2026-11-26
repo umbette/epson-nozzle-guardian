@@ -272,7 +272,9 @@ fun PrinterScannerSection(
         }
 
         AnimatedVisibility(visible = showManualMatrix) {
+            var selectedTargets by remember(profile.id) { mutableStateOf<Set<Pair<NozzleChannel, Int>>>(emptySet()) }
             Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
+                Text(stringResource(R.string.surgical_multi_hint), style = MaterialTheme.typography.bodySmall, color = TextMuted)
                 if ((st?.headTechnology ?: cfg.lastHeadTechnology) == HeadTechnology.THERMAL) {
                     Text(stringResource(R.string.surgical_thermal_note), style = MaterialTheme.typography.bodySmall, color = AccentCyan)
                 }
@@ -298,27 +300,64 @@ fun PrinterScannerSection(
                         listOf(1..5, 6..10).forEach { range ->
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
                                 for (step in range) {
+                                    val key = channel to step
+                                    val isChosen = key in selectedTargets
                                     Box(
                                         contentAlignment = Alignment.Center,
                                         modifier = Modifier
                                             .weight(1f)
                                             .height(44.dp)
                                             .clip(RoundedCornerShape(10.dp))
-                                            .background(accent.copy(alpha = 0.16f))
-                                            .border(1.dp, accent.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
+                                            .background(if (isChosen) accent.copy(alpha = 0.42f) else CardSurfaceAlt)
+                                            .border(
+                                                width = if (isChosen) 2.dp else 1.dp,
+                                                color = if (isChosen) accent else CardBorder,
+                                                shape = RoundedCornerShape(10.dp),
+                                            )
                                             .clickable(enabled = !ui.isBusy) {
-                                                viewModel.triggerSurgicalPurge(channel, step, printerId = profile.id)
+                                                selectedTargets = if (isChosen) selectedTargets - key else selectedTargets + key
                                             },
                                     ) {
                                         Text(
                                             "$step",
                                             style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = if (isChosen) FontWeight.Bold else FontWeight.Normal,
                                             color = TextPrimary,
                                         )
                                     }
                                 }
                             }
                         }
+                    }
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                    if (selectedTargets.isNotEmpty()) {
+                        OutlinedButton(
+                            onClick = { selectedTargets = emptySet() },
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, CardBorder),
+                            modifier = Modifier.height(46.dp),
+                        ) {
+                            Text(stringResource(R.string.surgical_clear_btn), maxLines = 1)
+                        }
+                    }
+                    Button(
+                        onClick = {
+                            if (selectedTargets.isNotEmpty()) {
+                                viewModel.triggerSurgicalBatchPurge(selectedTargets.toList(), printerId = profile.id)
+                                selectedTargets = emptySet()
+                            }
+                        },
+                        enabled = !ui.isBusy && selectedTargets.isNotEmpty() && cfg.printerHost.isNotBlank(),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.weight(1f).height(46.dp),
+                    ) {
+                        Text(
+                            stringResource(R.string.surgical_clean_selected_btn, selectedTargets.size),
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                        )
                     }
                 }
             }

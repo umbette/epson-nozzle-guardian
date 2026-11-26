@@ -63,6 +63,11 @@
     <string name="detail_purge_pb_gy">Photo K+G</string>
     <string name="clean_step2_title">2. Verify Printed Sheet</string>
     <string name="clean_manual_toggle">Or tap missing nozzle step manually (1–10)</string>
+    <string name="purge_select_hint">Select a pattern above, then confirm to print</string>
+    <string name="purge_confirm_btn">Confirm &amp; Print: %1$s</string>
+    <string name="surgical_multi_hint">Tap one or more missing steps across colors, then start cleaning:</string>
+    <string name="surgical_clean_selected_btn">Clean Selected (%1$d)</string>
+    <string name="surgical_clear_btn">Clear</string>
     <string name="subtab_clean_verify">Clean &amp; Verify</string>
     <string name="subtab_settings">Settings</string>
     <string name="detail_schedule_card_title">Schedule &amp; Threshold (Per Model)</string>

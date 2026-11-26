@@ -33,6 +33,10 @@
     <string name="detail_purge_cmyk">Tous</string>
     <string name="subtab_clean_verify">Nettoyage &amp; Vérif.</string>
     <string name="subtab_settings">Paramètres</string>
+    <string name="purge_select_hint">Sélectionnez une option ci-dessus puis confirmez</string>
+    <string name="purge_confirm_btn">Confirmer &amp; Imprimer : %1$s</string>
+    <string name="surgical_clean_selected_btn">Nettoyer sélection (%1$d)</string>
+    <string name="surgical_clear_btn">Effacer</string>
     <string name="detail_schedule_card_title">Fréquence &amp; Seuil (Par Modèle)</string>
     <string name="detail_inactivity_threshold">Seuil d\'inactivité</string>
     <string name="detail_days_unit">%1$d jours</string>
