@@ -2,18 +2,31 @@ package com.umbette.nozzleguardian
 
 import com.umbette.nozzleguardian.engine.DormancyDecisionType
 import com.umbette.nozzleguardian.engine.DormancyEngine
+import com.umbette.nozzleguardian.engine.AccountSession
+import com.umbette.nozzleguardian.engine.BrandBadge
+import com.umbette.nozzleguardian.engine.EntitlementPolicy
+import com.umbette.nozzleguardian.engine.EntitlementState
 import com.umbette.nozzleguardian.engine.EwsParser
 import com.umbette.nozzleguardian.engine.GuardianState
 import com.umbette.nozzleguardian.engine.HeadTechnology
 import com.umbette.nozzleguardian.engine.IppCodec
+import com.umbette.nozzleguardian.engine.LocationGroup
+import com.umbette.nozzleguardian.engine.MultiPrinterWorkspace
 import com.umbette.nozzleguardian.engine.NozzleChannel
 import com.umbette.nozzleguardian.engine.OpticalNozzleScanner
 import com.umbette.nozzleguardian.engine.PatternGenerator
+import com.umbette.nozzleguardian.engine.PlanTier
+import com.umbette.nozzleguardian.engine.PrinterClassification
 import com.umbette.nozzleguardian.engine.PrinterKind
+import com.umbette.nozzleguardian.engine.PrinterProfile
+import com.umbette.nozzleguardian.engine.PrinterSilhouette
 import com.umbette.nozzleguardian.engine.PrinterStatus
+import com.umbette.nozzleguardian.engine.ProFeature
 import com.umbette.nozzleguardian.engine.PurgeMode
 import com.umbette.nozzleguardian.engine.PwgRasterEncoder
 import com.umbette.nozzleguardian.engine.SnmpCodec
+import com.umbette.nozzleguardian.engine.SyncSnapshotCodec
+import com.umbette.nozzleguardian.engine.WorkspaceEngine
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -97,6 +110,72 @@ class EngineUnitTests {
         )
         val decision = DormancyEngine.evaluate(base, st8550, now)
         assertEquals(PurgeMode.CMYK6, decision.recommendedPurgeMode)
+    }
+
+    @Test
+    fun multiPrinterLocationsVisualsEntitlementsAndSyncSnapshot() {
+        val (b4, s4) = PrinterClassification.inferVisuals("EPSON ET-4810 Series", tankCount = 4)
+        assertEquals(BrandBadge.EPSON, b4)
+        assertEquals(PrinterSilhouette.TANK_4_ADF, s4)
+
+        val (b6, s6) = PrinterClassification.inferVisuals("EPSON ET-8550 Series", tankCount = 6)
+        assertEquals(BrandBadge.EPSON, b6)
+        assertEquals(PrinterSilhouette.TANK_6_PHOTO, s6)
+
+        val (bc, sc) = PrinterClassification.inferVisuals("Canon G3010 MegaTank", tankCount = 4)
+        assertEquals(BrandBadge.CANON, bc)
+        assertEquals(PrinterSilhouette.TANK_4_COMPACT, sc)
+
+        var ws = MultiPrinterWorkspace(
+            locations = listOf(
+                LocationGroup(id = "home", name = "Casa", wifiSsid = "HomeWiFi"),
+                LocationGroup(id = "office", name = "Ufficio", wifiSsid = "OfficeNet"),
+            ),
+        )
+        ws = WorkspaceEngine.upsertPrinter(
+            ws,
+            PrinterProfile(
+                id = "p1",
+                locationId = "home",
+                displayName = "ET-2810 Casa",
+                brand = BrandBadge.EPSON,
+                silhouette = PrinterSilhouette.TANK_4_COMPACT,
+                state = GuardianState(printerHost = "192.168.1.181"),
+            ),
+        )
+        ws = WorkspaceEngine.upsertPrinter(
+            ws,
+            PrinterProfile(
+                id = "p2",
+                locationId = "office",
+                displayName = "ET-4810 Ufficio",
+                brand = BrandBadge.EPSON,
+                silhouette = PrinterSilhouette.TANK_4_ADF,
+                state = GuardianState(printerHost = "10.0.0.50"),
+            ),
+            setActive = false,
+        )
+
+        val onHome = WorkspaceEngine.printersForCurrentWifi(ws, "\"HomeWiFi\"")
+        assertEquals(listOf("p1"), onHome.map { it.id })
+
+        val free = EntitlementState(tier = PlanTier.FREE, isPlayStoreInstall = true)
+        assertFalse(free.hasAccess(ProFeature.AUTO_PURGE))
+        assertFalse(free.hasAccess(ProFeature.CAMERA_SCANNER))
+        assertFalse(EntitlementPolicy.canAddPrinter(free, ws))
+
+        val pro = EntitlementState(tier = PlanTier.PRO, source = "play_billing", isPlayStoreInstall = true)
+        assertTrue(pro.hasAccess(ProFeature.AUTO_PURGE))
+        assertTrue(pro.hasAccess(ProFeature.CAMERA_SCANNER))
+        assertTrue(EntitlementPolicy.canAddPrinter(pro, ws))
+
+        val snap = SyncSnapshotCodec.exportSnapshotJson(
+            ws,
+            AccountSession(signedIn = true, email = "user@example.com", displayName = "Umberto"),
+        )
+        assertTrue("\"locations\"" in snap)
+        assertTrue("\"ET-4810 Ufficio\"" in snap)
+        assertTrue("\"user@example.com\"" in snap)
     }
 
     @Test

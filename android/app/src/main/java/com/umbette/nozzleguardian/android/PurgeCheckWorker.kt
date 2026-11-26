@@ -1,6 +1,7 @@
 package com.umbette.nozzleguardian.android
 
 import android.content.Context
+import android.net.wifi.WifiManager
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -10,6 +11,8 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.umbette.nozzleguardian.engine.DormancyDecisionType
 import com.umbette.nozzleguardian.engine.DormancyEngine
+import com.umbette.nozzleguardian.engine.ProFeature
+import com.umbette.nozzleguardian.engine.WorkspaceEngine
 import java.time.Instant
 import java.util.concurrent.TimeUnit
 
@@ -18,58 +21,85 @@ class PurgeCheckWorker(
     params: WorkerParameters,
 ) : CoroutineWorker(appContext, params) {
 
+    @Suppress("DEPRECATION")
+    private fun currentWifiSsid(): String? = runCatching {
+        val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+        val raw = wm?.connectionInfo?.ssid ?: return null
+        if (raw == "<unknown ssid>" || raw.isBlank()) null else raw.removePrefix("\"").removeSuffix("\"")
+    }.getOrNull()
+
     override suspend fun doWork(): Result {
         val store = StateStore(applicationContext)
-        val currentState = store.loadState()
-        if (currentState.printerHost.isBlank()) {
+        var workspace = store.loadWorkspace()
+        val entitlement = store.loadEntitlement()
+        val ssid = currentWifiSsid()
+
+        val reachablePrinters = WorkspaceEngine.printersForCurrentWifi(workspace, ssid)
+        if (reachablePrinters.isEmpty()) {
             return Result.success()
         }
 
         val client = LanPrinterClient(applicationContext, store)
-        val status = client.getStatus(
-            host = currentState.printerHost,
-            port = currentState.printerPort,
-            useTls = currentState.useTls,
-            preferredMedia = currentState.mediaSize,
-        )
-        val decision = DormancyEngine.evaluate(currentState, status, Instant.now())
-        var finalState = decision.updatedState
+        val canAutoPurge = entitlement.hasAccess(ProFeature.AUTO_PURGE)
+        var lastSummary = store.getLastSummary()
 
-        when (decision.type) {
-            DormancyDecisionType.MEDIA_EMPTY_ABORTED -> {
-                store.saveState(finalState)
-                store.saveLastSummary(decision.message)
-                NotificationHelper.showAlert(
-                    applicationContext,
-                    "Nozzle Guardian: Inserisci Carta",
-                    "${status.makeAndModel ?: currentState.printerHost}: vassoio vuoto (media-empty).",
-                    notificationId = 1002,
-                )
-            }
-            DormancyDecisionType.PURGE_REQUIRED -> {
-                val mode = decision.recommendedPurgeMode
-                if (mode != null) {
-                    val outcome = client.dispatchPurge(currentState.printerHost, currentState.printerPort, mode, status)
-                    if (outcome.success) {
-                        finalState = DormancyEngine.markPurgeExecuted(finalState, mode)
-                        store.saveLastSummary("Spurgo automatico ${mode.name} eseguito (${outcome.docFormat}).")
-                        NotificationHelper.showAlert(
-                            applicationContext,
-                            "Nozzle Guardian: Spurgo ${mode.name} completato",
-                            "${status.makeAndModel ?: currentState.printerHost}: ${outcome.message}",
-                            notificationId = 1001,
-                        )
-                    } else {
-                        store.saveLastSummary("Tentativo spurgo ${mode.name} fallito: ${outcome.message}")
+        for ((idx, printer) in reachablePrinters.withIndex()) {
+            val st = printer.state
+            val status = client.getStatus(
+                host = st.printerHost,
+                port = st.printerPort,
+                useTls = st.useTls,
+                preferredMedia = st.mediaSize,
+            )
+            val decision = DormancyEngine.evaluate(st, status, Instant.now())
+            var nextPrinterState = decision.updatedState
+            var updatedProfile = WorkspaceEngine.updatePrinterStatusVisuals(printer, status)
+
+            when (decision.type) {
+                DormancyDecisionType.MEDIA_EMPTY_ABORTED -> {
+                    lastSummary = "${updatedProfile.displayName}: ${decision.message}"
+                    NotificationHelper.showAlert(
+                        applicationContext,
+                        "Nozzle Guardian: Inserisci Carta",
+                        "${updatedProfile.displayName}: vassoio vuoto (media-empty).",
+                        notificationId = 1100 + idx,
+                    )
+                }
+                DormancyDecisionType.PURGE_REQUIRED -> {
+                    val mode = decision.recommendedPurgeMode
+                    if (mode != null && canAutoPurge) {
+                        val outcome = client.dispatchPurge(st.printerHost, st.printerPort, mode, status)
+                        if (outcome.success) {
+                            nextPrinterState = DormancyEngine.markPurgeExecuted(nextPrinterState, mode)
+                            lastSummary = "${updatedProfile.displayName}: spurgo ${mode.name} eseguito (${outcome.docFormat})."
+                            NotificationHelper.showAlert(
+                                applicationContext,
+                                "Nozzle Guardian: Spurgo ${mode.name} completato",
+                                "${updatedProfile.displayName}: ${outcome.message}",
+                                notificationId = 1001 + idx,
+                            )
+                        } else {
+                            lastSummary = "${updatedProfile.displayName}: spurgo ${mode.name} fallito (${outcome.message})."
+                        }
+                    } else if (mode != null) {
+                        lastSummary = "${updatedProfile.displayName}: canale ${mode.name} inattivo (Auto-Spurgo richiede Pro)."
                     }
                 }
-                store.saveState(finalState)
+                else -> {
+                    lastSummary = "${updatedProfile.displayName}: ${decision.message}"
+                }
             }
-            else -> {
-                store.saveState(finalState)
-                store.saveLastSummary(decision.message)
-            }
+
+            updatedProfile = updatedProfile.copy(state = nextPrinterState)
+            workspace = WorkspaceEngine.upsertPrinter(
+                workspace,
+                updatedProfile,
+                setActive = (workspace.activePrinterId == updatedProfile.id),
+            )
         }
+
+        store.saveWorkspace(workspace)
+        store.saveLastSummary(lastSummary)
         return Result.success()
     }
 

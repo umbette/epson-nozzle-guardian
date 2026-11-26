@@ -12,8 +12,8 @@ android {
         applicationId = "com.umbette.nozzleguardian"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.2.1"
+        versionCode = 3
+        versionName = "1.3.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -65,6 +65,7 @@ dependencies {
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
     implementation(libs.androidx.material.icons.extended)
+    implementation(libs.play.billing.ktx)
 
     debugImplementation(libs.androidx.ui.tooling)
     testImplementation(libs.junit)

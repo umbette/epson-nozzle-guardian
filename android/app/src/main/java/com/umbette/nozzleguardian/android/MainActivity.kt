@@ -1,6 +1,7 @@
 package com.umbette.nozzleguardian.android
 
 import android.Manifest
+import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -16,6 +17,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,15 +39,23 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CleaningServices
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.WifiFind
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -55,6 +65,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -70,6 +81,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.darkColorScheme
@@ -91,7 +103,9 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -99,10 +113,14 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
+import com.umbette.nozzleguardian.engine.BrandBadge
 import com.umbette.nozzleguardian.engine.HeadTechnology
 import com.umbette.nozzleguardian.engine.MarkerSupply
 import com.umbette.nozzleguardian.engine.NozzleChannel
+import com.umbette.nozzleguardian.engine.PrinterClassification
 import com.umbette.nozzleguardian.engine.PrinterKind
+import com.umbette.nozzleguardian.engine.PrinterSilhouette
+import com.umbette.nozzleguardian.engine.ProFeature
 import com.umbette.nozzleguardian.engine.PurgeMode
 import java.io.File
 
@@ -112,6 +130,7 @@ private val CardSurfaceAlt = Color(0xFF1B2840)
 private val CardBorder = Color(0xFF26354F)
 private val AccentCyan = Color(0xFF38BDF8)
 private val AccentMagenta = Color(0xFFE879F9)
+private val ProGold = Color(0xFFF59E0B)
 private val TextPrimary = Color(0xFFF8FAFC)
 private val TextMuted = Color(0xFF94A3B8)
 private val StatusGreen = Color(0xFF22C55E)
@@ -185,6 +204,156 @@ fun NozzleGuardianLogo(size: Dp = 32.dp, modifier: Modifier = Modifier) {
 }
 
 @Composable
+private fun PrinterSilhouetteArt(
+    silhouette: PrinterSilhouette,
+    brand: BrandBadge,
+    size: Dp = 44.dp,
+    modifier: Modifier = Modifier,
+) {
+    val accent = Color(brand.accentHex)
+    Canvas(modifier = modifier.size(size)) {
+        val w = this.size.width
+        val h = this.size.height
+
+        // Paper top feeder tray (common to inkjet/photo, ADF adds tall box)
+        if (silhouette == PrinterSilhouette.TANK_4_ADF) {
+            drawRoundRect(
+                color = Color(0xFF334155),
+                topLeft = Offset(w * 0.18f, h * 0.10f),
+                size = Size(w * 0.64f, h * 0.20f),
+                cornerRadius = CornerRadius(w * 0.06f, w * 0.06f),
+            )
+        } else if (silhouette != PrinterSilhouette.LASER_TONER) {
+            drawRoundRect(
+                color = Color(0xFFCBD5E1),
+                topLeft = Offset(w * 0.28f, h * 0.10f),
+                size = Size(w * 0.44f, h * 0.22f),
+                cornerRadius = CornerRadius(w * 0.04f, w * 0.04f),
+            )
+        }
+
+        // Main chassis
+        val bodyTop = if (silhouette == PrinterSilhouette.LASER_TONER) h * 0.18f else h * 0.28f
+        val bodyH = if (silhouette == PrinterSilhouette.LASER_TONER) h * 0.62f else h * 0.46f
+        drawRoundRect(
+            color = Color(0xFF1E293B),
+            topLeft = Offset(w * 0.08f, bodyTop),
+            size = Size(w * 0.84f, bodyH),
+            cornerRadius = CornerRadius(w * 0.10f, w * 0.10f),
+        )
+        drawRoundRect(
+            color = accent.copy(alpha = 0.7f),
+            topLeft = Offset(w * 0.08f, bodyTop),
+            size = Size(w * 0.84f, bodyH),
+            cornerRadius = CornerRadius(w * 0.10f, w * 0.10f),
+            style = Stroke(width = w * 0.045f),
+        )
+
+        // Output paper tray
+        drawRoundRect(
+            color = Color(0xFF0F172A),
+            topLeft = Offset(w * 0.24f, h * 0.66f),
+            size = Size(w * 0.52f, h * 0.16f),
+            cornerRadius = CornerRadius(w * 0.04f, w * 0.04f),
+        )
+        drawRoundRect(
+            color = Color(0xFFE2E8F0),
+            topLeft = Offset(w * 0.30f, h * 0.72f),
+            size = Size(w * 0.40f, h * 0.14f),
+            cornerRadius = CornerRadius(w * 0.03f, w * 0.03f),
+        )
+
+        // Visual signature by printer type
+        when (silhouette) {
+            PrinterSilhouette.TANK_4_COMPACT, PrinterSilhouette.TANK_4_ADF -> {
+                val tankColors = listOf(Color(0xFF06B6D4), Color(0xFFEC4899), Color(0xFFEAB308), Color(0xFFE2E8F0))
+                tankColors.forEachIndexed { idx, col ->
+                    drawRoundRect(
+                        color = col,
+                        topLeft = Offset(w * (0.64f + idx * 0.06f), h * 0.44f),
+                        size = Size(w * 0.042f, h * 0.16f),
+                        cornerRadius = CornerRadius(w * 0.015f, w * 0.015f),
+                    )
+                }
+            }
+            PrinterSilhouette.TANK_6_PHOTO -> {
+                val tankColors = listOf(
+                    Color(0xFF06B6D4), Color(0xFFEC4899), Color(0xFFEAB308),
+                    Color(0xFFE2E8F0), Color(0xFF64748B), Color(0xFF94A3B8),
+                )
+                tankColors.forEachIndexed { idx, col ->
+                    drawRoundRect(
+                        color = col,
+                        topLeft = Offset(w * (0.56f + idx * 0.05f), h * 0.44f),
+                        size = Size(w * 0.036f, h * 0.16f),
+                        cornerRadius = CornerRadius(w * 0.012f, w * 0.012f),
+                    )
+                }
+            }
+            PrinterSilhouette.CARTRIDGE_COMPACT -> {
+                drawRoundRect(
+                    color = accent,
+                    topLeft = Offset(w * 0.18f, h * 0.38f),
+                    size = Size(w * 0.64f, h * 0.08f),
+                    cornerRadius = CornerRadius(w * 0.03f, w * 0.03f),
+                )
+            }
+            PrinterSilhouette.LASER_TONER -> {
+                drawRoundRect(
+                    color = StatusAmber,
+                    topLeft = Offset(w * 0.18f, h * 0.32f),
+                    size = Size(w * 0.28f, h * 0.08f),
+                    cornerRadius = CornerRadius(w * 0.03f, w * 0.03f),
+                )
+                drawRoundRect(
+                    color = Color(0xFF334155),
+                    topLeft = Offset(w * 0.18f, h * 0.48f),
+                    size = Size(w * 0.64f, h * 0.14f),
+                    cornerRadius = CornerRadius(w * 0.03f, w * 0.03f),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun BrandPill(brand: BrandBadge) {
+    val accent = Color(brand.accentHex)
+    Surface(
+        shape = RoundedCornerShape(6.dp),
+        color = accent.copy(alpha = 0.18f),
+        border = BorderStroke(1.dp, accent.copy(alpha = 0.45f)),
+    ) {
+        Text(
+            text = brand.displayName,
+            color = TextPrimary,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+        )
+    }
+}
+
+@Composable
+private fun ProBadge(label: String = "PRO") {
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = ProGold.copy(alpha = 0.18f),
+        border = BorderStroke(1.dp, ProGold.copy(alpha = 0.55f)),
+    ) {
+        Text(
+            text = label,
+            color = ProGold,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
+        )
+    }
+}
+
+@Composable
 private fun ModernCard(
     modifier: Modifier = Modifier,
     borderColor: Color = CardBorder,
@@ -218,6 +387,15 @@ fun NozzleGuardianApp(viewModel: NozzleGuardianViewModel) {
         }
     }
 
+    ui.paywallFeaturePrompt?.let { feature ->
+        PaywallDialog(
+            feature = feature,
+            ui = ui,
+            viewModel = viewModel,
+            onDismiss = { viewModel.dismissPaywall() },
+        )
+    }
+
     Scaffold(
         containerColor = BgDeep,
         topBar = {
@@ -229,13 +407,13 @@ fun NozzleGuardianApp(viewModel: NozzleGuardianViewModel) {
                 title = {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         NozzleGuardianLogo(size = 30.dp)
                         Text(
                             "Nozzle Guardian",
                             fontWeight = FontWeight.Bold,
-                            fontSize = 20.sp,
+                            fontSize = 19.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
@@ -245,12 +423,15 @@ fun NozzleGuardianApp(viewModel: NozzleGuardianViewModel) {
                             border = BorderStroke(1.dp, AccentCyan.copy(alpha = 0.35f)),
                         ) {
                             Text(
-                                "v1.2.1",
+                                "v1.3.0",
                                 color = AccentCyan,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
                             )
+                        }
+                        if (ui.entitlement.isProActive) {
+                            ProBadge("PRO")
                         }
                     }
                 },
@@ -286,8 +467,8 @@ fun NozzleGuardianApp(viewModel: NozzleGuardianViewModel) {
                     selected = activeTab == 2,
                     onClick = { activeTab = 2 },
                     colors = navColors,
-                    icon = { Icon(Icons.Filled.Info, contentDescription = null) },
-                    label = { Text("Guida") },
+                    icon = { Icon(Icons.Filled.Person, contentDescription = null) },
+                    label = { Text("Pro & Info") },
                 )
             }
         },
@@ -315,7 +496,8 @@ fun NozzleGuardianApp(viewModel: NozzleGuardianViewModel) {
                     ui.bannerMessage.contains("non raggiungibile", ignoreCase = true)
                 val isOk = ui.bannerMessage.contains("attivi", ignoreCase = true) ||
                     ui.bannerMessage.contains("accettato", ignoreCase = true) ||
-                    ui.bannerMessage.contains("trovat", ignoreCase = true)
+                    ui.bannerMessage.contains("trovat", ignoreCase = true) ||
+                    ui.bannerMessage.contains("completato", ignoreCase = true)
                 val accent = when {
                     isError -> StatusRed
                     isOk -> StatusGreen
@@ -350,7 +532,7 @@ fun NozzleGuardianApp(viewModel: NozzleGuardianViewModel) {
             when (activeTab) {
                 0 -> PrinterControlTab(ui, viewModel)
                 1 -> ScannerSurgicalTab(ui, viewModel)
-                else -> AboutLicenseTab()
+                else -> AccountProTab(ui, viewModel)
             }
             Spacer(modifier = Modifier.height(16.dp))
         }
@@ -371,24 +553,219 @@ private fun PrinterControlTab(ui: MainUiState, viewModel: NozzleGuardianViewMode
         mutableFloatStateOf(ui.config.inactivityThresholdDays.toFloat())
     }
 
+    var selectedLocationId by remember(ui.workspace.activePrinter?.locationId, ui.workspace.locations) {
+        mutableStateOf(ui.workspace.activePrinter?.locationId ?: ui.workspace.locations.firstOrNull()?.id ?: "loc_home")
+    }
+    var showAddLocationDialog by remember { mutableStateOf(false) }
+    var showAddPrinterDialog by remember { mutableStateOf(false) }
+
+    if (showAddLocationDialog) {
+        AddLocationDialog(
+            onDismiss = { showAddLocationDialog = false },
+            onConfirm = { name, ssid ->
+                viewModel.addLocationGroup(name, ssid)
+                showAddLocationDialog = false
+            },
+        )
+    }
+
+    if (showAddPrinterDialog) {
+        AddPrinterDialog(
+            locationName = ui.workspace.locations.firstOrNull { it.id == selectedLocationId }?.name ?: "Casa",
+            onDismiss = { showAddPrinterDialog = false },
+            onConfirm = { name, host, port, tls ->
+                viewModel.addPrinterProfile(selectedLocationId, name, host, port, tls)
+                showAddPrinterDialog = false
+            },
+        )
+    }
+
+    // Location & Multi-Printer Selector Card
+    ModernCard {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Icon(Icons.Filled.Home, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(18.dp))
+            Text(
+                "Case / Location & Stampanti",
+                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.titleSmall,
+                modifier = Modifier.weight(1f),
+            )
+            if (!ui.entitlement.isProActive) {
+                ProBadge("MULTI PRO")
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            ui.workspace.locations.forEach { loc ->
+                val selected = loc.id == selectedLocationId
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = if (selected) AccentCyan.copy(alpha = 0.20f) else CardSurfaceAlt,
+                    border = BorderStroke(1.dp, if (selected) AccentCyan else CardBorder),
+                    modifier = Modifier.clickable { selectedLocationId = loc.id },
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        val suffix = if (loc.wifiSsid.isNotBlank()) " (${loc.wifiSsid})" else ""
+                        Text(
+                            text = "${loc.name}$suffix",
+                            fontSize = 12.sp,
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                            color = if (selected) AccentCyan else TextPrimary,
+                            maxLines = 1,
+                        )
+                    }
+                }
+            }
+            OutlinedButton(
+                onClick = {
+                    if (!ui.entitlement.isProActive && ui.workspace.locations.isNotEmpty()) {
+                        viewModel.requestPaywall(ProFeature.MULTI_PRINTER_LOCATIONS)
+                    } else {
+                        showAddLocationDialog = true
+                    }
+                },
+                shape = RoundedCornerShape(50),
+                border = BorderStroke(1.dp, CardBorder),
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                modifier = Modifier.height(32.dp),
+            ) {
+                Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(14.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Location", fontSize = 12.sp, maxLines = 1, softWrap = false)
+            }
+        }
+
+        val printersInLocation = ui.workspace.printers.filter { it.locationId == selectedLocationId }
+        val displayedPrinters = printersInLocation.ifEmpty { ui.workspace.printers }
+        if (displayedPrinters.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                displayedPrinters.forEach { profile ->
+                    val isActive = profile.id == ui.workspace.activePrinter?.id
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(if (isActive) AccentCyan.copy(alpha = 0.12f) else CardSurfaceAlt)
+                            .border(
+                                1.dp,
+                                if (isActive) AccentCyan.copy(alpha = 0.65f) else CardBorder,
+                                RoundedCornerShape(12.dp),
+                            )
+                            .clickable { viewModel.switchActivePrinter(profile.id) }
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        PrinterSilhouetteArt(
+                            silhouette = profile.silhouette,
+                            brand = profile.brand,
+                            size = 40.dp,
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                BrandPill(profile.brand)
+                                Text(
+                                    profile.displayName,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 13.sp,
+                                    color = TextPrimary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            val hostStr = profile.state.printerHost.ifBlank { "IP non configurato" }
+                            Text(
+                                "$hostStr:${profile.state.printerPort} • ${profile.silhouette.label}",
+                                fontSize = 11.sp,
+                                color = TextMuted,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        if (ui.workspace.printers.size > 1) {
+                            IconButton(
+                                onClick = { viewModel.removePrinterProfile(profile.id) },
+                                modifier = Modifier.size(28.dp),
+                            ) {
+                                Icon(Icons.Filled.Close, contentDescription = "Rimuovi", tint = TextMuted, modifier = Modifier.size(16.dp))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        OutlinedButton(
+            onClick = {
+                if (!ui.entitlement.isProActive && ui.workspace.printers.isNotEmpty()) {
+                    viewModel.requestPaywall(ProFeature.MULTI_PRINTER_LOCATIONS)
+                } else {
+                    showAddPrinterDialog = true
+                }
+            },
+            shape = RoundedCornerShape(12.dp),
+            border = BorderStroke(1.dp, AccentCyan.copy(alpha = 0.4f)),
+            modifier = Modifier.fillMaxWidth().height(40.dp),
+        ) {
+            Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(16.dp), tint = AccentCyan)
+            Spacer(Modifier.width(6.dp))
+            Text("Aggiungi Stampante in questa Location", color = AccentCyan, fontSize = 13.sp, maxLines = 1, softWrap = false)
+        }
+    }
+
     ui.status?.let { st ->
+        val (inferredBrand, inferredSilhouette) = PrinterClassification.inferVisuals(
+            makeAndModel = st.makeAndModel,
+            tankCount = st.tankCount,
+            kind = st.printerKind,
+        )
         ModernCard(
             borderColor = if (st.online) StatusGreen.copy(alpha = 0.35f) else StatusRed.copy(alpha = 0.35f),
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier.fillMaxWidth(),
             ) {
+                PrinterSilhouetteArt(
+                    silhouette = inferredSilhouette,
+                    brand = inferredBrand,
+                    size = 48.dp,
+                )
                 Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        BrandPill(inferredBrand)
+                        Text(
+                            st.makeAndModel ?: "Stampante IPP",
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = TextPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                     Text(
-                        st.makeAndModel ?: "Stampante IPP",
-                        fontWeight = FontWeight.Bold,
-                        style = MaterialTheme.typography.titleMedium,
-                        color = TextPrimary,
-                    )
-                    Text(
-                        "${st.headTechnology.label} • ${st.mediaDefault}",
+                        "${st.headTechnology.label} • ${inferredSilhouette.label}",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextMuted,
                     )
@@ -463,19 +840,24 @@ private fun PrinterControlTab(ui: MainUiState, viewModel: NozzleGuardianViewMode
         }
 
         ui.discovered.forEach { dev ->
+            val (devBrand, devSilhouette) = PrinterClassification.inferVisuals(dev.makeAndModel, kind = dev.printerKind)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp))
                     .background(CardSurfaceAlt)
                     .border(1.dp, AccentCyan.copy(alpha = 0.25f), RoundedCornerShape(12.dp))
-                    .clickable { viewModel.selectPrinter(dev) }
+                    .clickable { viewModel.selectDiscoveredPrinter(dev, selectedLocationId) }
                     .padding(horizontal = 12.dp, vertical = 10.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                PrinterSilhouetteArt(devSilhouette, devBrand, size = 36.dp)
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(dev.makeAndModel, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        BrandPill(devBrand)
+                        Text(dev.makeAndModel, fontWeight = FontWeight.SemiBold, color = TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
                     Text("${dev.host}:${dev.port} • ${dev.headTechnology.label}", style = MaterialTheme.typography.bodySmall, color = TextMuted)
                 }
                 Surface(
@@ -530,12 +912,28 @@ private fun PrinterControlTab(ui: MainUiState, viewModel: NozzleGuardianViewMode
             Switch(checked = useTls, onCheckedChange = { useTls = it }, colors = switchColors)
         }
 
+        val hasAutoPurgeAccess = ui.entitlement.hasAccess(ProFeature.AUTO_PURGE)
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
-                Text("Auto-spurgo automatico (Wi-Fi casa)", fontWeight = FontWeight.Medium)
-                Text("Controllo ogni 12h con WorkManager", style = MaterialTheme.typography.bodySmall, color = TextMuted)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Auto-spurgo automatico (Wi-Fi casa)", fontWeight = FontWeight.Medium)
+                    if (!hasAutoPurgeAccess) {
+                        ProBadge()
+                    }
+                }
+                Text("Controllo ogni 12h con WorkManager (notifiche inattività incluse gratis)", style = MaterialTheme.typography.bodySmall, color = TextMuted)
             }
-            Switch(checked = autoPurge, onCheckedChange = { autoPurge = it }, colors = switchColors)
+            Switch(
+                checked = autoPurge && hasAutoPurgeAccess,
+                onCheckedChange = { wantEnable ->
+                    if (wantEnable && !hasAutoPurgeAccess) {
+                        viewModel.requestPaywall(ProFeature.AUTO_PURGE)
+                    } else {
+                        autoPurge = wantEnable
+                    }
+                },
+                colors = switchColors,
+            )
         }
 
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -600,10 +998,11 @@ private fun PrinterControlTab(ui: MainUiState, viewModel: NozzleGuardianViewMode
                         port = portInput.toIntOrNull() ?: 631,
                         useTls = useTls,
                         thresholdDays = daysFloat.toInt(),
-                        autoPurgeEnabled = autoPurge,
+                        autoPurgeEnabled = autoPurge && hasAutoPurgeAccess,
                         preferredFormat = preferredFormat,
                         mediaType = mediaType,
                         inkProfile = inkProfile,
+                        locationId = selectedLocationId,
                     )
                 },
                 shape = RoundedCornerShape(12.dp),
@@ -628,7 +1027,7 @@ private fun PrinterControlTab(ui: MainUiState, viewModel: NozzleGuardianViewMode
     ModernCard {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Icon(Icons.Filled.CleaningServices, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(18.dp))
-            Text("2. Spurgo Manuale Diretto", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
+            Text("2. Spurgo Manuale Diretto (Gratis)", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
         }
         val isInkjetOk = ui.status?.printerKind != PrinterKind.LASER && ui.config.printerHost.isNotBlank() && !ui.isBusy
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
@@ -778,6 +1177,7 @@ private fun CompactSelector(
 private fun ScannerSurgicalTab(ui: MainUiState, viewModel: NozzleGuardianViewModel) {
     val context = LocalContext.current
     var cameraUri by remember { mutableStateOf<Uri?>(null) }
+    val hasCameraAccess = ui.entitlement.hasAccess(ProFeature.CAMERA_SCANNER)
 
     val takePicture = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
         if (ok) cameraUri?.let { viewModel.scanSheetUri(it) }
@@ -786,21 +1186,61 @@ private fun ScannerSurgicalTab(ui: MainUiState, viewModel: NozzleGuardianViewMod
         uri?.let { viewModel.scanSheetUri(it) }
     }
 
-    ModernCard {
-        Text("Scanner Ottico Foglio Test", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
+    ModernCard(borderColor = if (hasCameraAccess) CardBorder else ProGold.copy(alpha = 0.4f)) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(
+                "Scanner Ottico Foglio Test",
+                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.titleSmall,
+                modifier = Modifier.weight(1f),
+            )
+            ProBadge(if (hasCameraAccess) "PRO ATTIVO" else "PRO")
+        }
         Text(
-            "Stampa un test (CMYK o Nero) e fotografalo con buona luce per individuare i singoli ugelli mancanti (1–10).",
+            "Stampa un test (CMYK o Nero) e fotografalo con buona luce per individuare automaticamente i singoli ugelli mancanti (1–10).",
             style = MaterialTheme.typography.bodySmall,
             color = TextMuted,
         )
+
+        if (!hasCameraAccess) {
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = ProGold.copy(alpha = 0.12f),
+                border = BorderStroke(1.dp, ProGold.copy(alpha = 0.35f)),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Icon(Icons.Filled.Lock, contentDescription = null, tint = ProGold, modifier = Modifier.size(18.dp))
+                    Text(
+                        "Il riconoscimento ottico via fotocamera è una funzione Pro. Puoi comunque usare la matrice manuale qui sotto.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextPrimary,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+        }
+
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
             Button(
                 onClick = {
-                    val dir = File(context.cacheDir, "scans").apply { mkdirs() }
-                    val file = File(dir, "nozzle_capture.jpg")
-                    val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-                    cameraUri = uri
-                    takePicture.launch(uri)
+                    if (!hasCameraAccess) {
+                        viewModel.requestPaywall(ProFeature.CAMERA_SCANNER)
+                    } else {
+                        val dir = File(context.cacheDir, "scans").apply { mkdirs() }
+                        val file = File(dir, "nozzle_capture.jpg")
+                        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                        cameraUri = uri
+                        takePicture.launch(uri)
+                    }
                 },
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.weight(1f).height(46.dp),
@@ -810,7 +1250,13 @@ private fun ScannerSurgicalTab(ui: MainUiState, viewModel: NozzleGuardianViewMod
                 Text("Scatta Foto", maxLines = 1, softWrap = false)
             }
             OutlinedButton(
-                onClick = { pickImage.launch("image/*") },
+                onClick = {
+                    if (!hasCameraAccess) {
+                        viewModel.requestPaywall(ProFeature.CAMERA_SCANNER)
+                    } else {
+                        pickImage.launch("image/*")
+                    }
+                },
                 shape = RoundedCornerShape(12.dp),
                 border = BorderStroke(1.dp, CardBorder),
                 modifier = Modifier.weight(1f).height(46.dp),
@@ -894,14 +1340,181 @@ private fun ScannerSurgicalTab(ui: MainUiState, viewModel: NozzleGuardianViewMod
 }
 
 @Composable
-private fun AboutLicenseTab() {
+private fun AccountProTab(ui: MainUiState, viewModel: NozzleGuardianViewModel) {
     val context = LocalContext.current
+    val activity = context as? Activity
+    val clipboard = LocalClipboardManager.current
+
+    var emailInput by remember(ui.account.email) { mutableStateOf(ui.account.email) }
+    var nameInput by remember(ui.account.displayName) { mutableStateOf(ui.account.displayName) }
+    var syncUrlInput by remember(ui.account.syncServerUrl) { mutableStateOf(ui.account.syncServerUrl) }
+
+    // 1. Free vs Pro Plan Card
+    ModernCard(borderColor = if (ui.entitlement.isProActive) ProGold.copy(alpha = 0.5f) else CardBorder) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Icon(Icons.Filled.Star, contentDescription = null, tint = ProGold, modifier = Modifier.size(20.dp))
+            Text(
+                if (ui.entitlement.isProActive) "Piano Nozzle Guardian Pro" else "Piano Free (Locale)",
+                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.titleSmall,
+                modifier = Modifier.weight(1f),
+            )
+            ProBadge(if (ui.entitlement.isProActive) "ATTIVO" else "FREE")
+        }
+
+        Text("• Gratis sempre: 1 stampante, verifica stato IPP, notifica promemoria inattività, spurgo manuale e matrice chirurgica.", style = MaterialTheme.typography.bodySmall)
+        Text("• Pro: Auto-spurgo autonomo ogni 12h, Scanner ottico fotocamera, Multi-stampante & Location Wi-Fi, Sync multi-dispositivo.", style = MaterialTheme.typography.bodySmall, color = TextMuted)
+
+        if (!ui.entitlement.isPlayStoreInstall) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(CardSurfaceAlt)
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+            ) {
+                Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                    Text("Anteprima Pro (Build Sideload / Open-Core)", fontWeight = FontWeight.Medium, fontSize = 13.sp)
+                    Text("Attiva/disattiva per testare sia i blocchi Free che tutte le funzioni Pro sul telefono.", fontSize = 11.sp, color = TextMuted)
+                }
+                Switch(
+                    checked = ui.entitlement.previewProEnabled,
+                    onCheckedChange = { viewModel.setPreviewProEnabled(it) },
+                )
+            }
+        }
+
+        Text(ui.billing.statusText, style = MaterialTheme.typography.bodySmall, color = AccentCyan)
+        if (ui.billing.offers.isNotEmpty() && activity != null) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                ui.billing.offers.forEach { offer ->
+                    Button(
+                        onClick = { viewModel.launchProPurchase(activity, offer) },
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = ProGold, contentColor = Color(0xFF1F1200)),
+                        modifier = Modifier.fillMaxWidth().height(44.dp),
+                    ) {
+                        Text("${offer.title} — ${offer.formattedPrice}", fontWeight = FontWeight.Bold, maxLines = 1)
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. Optional Account & Sync Card
+    ModernCard {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Icon(Icons.Filled.Sync, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(18.dp))
+            Text(
+                "Account Opzionale & Backup Sync",
+                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.titleSmall,
+                modifier = Modifier.weight(1f),
+            )
+            if (!ui.entitlement.hasAccess(ProFeature.CLOUD_SYNC)) {
+                ProBadge("SYNC PRO")
+            }
+        }
+        Text(
+            "Nessun account obbligatorio per usare l'app. Inserisci un profilo email/server self-hosted (es. Homelab sulla porta 8086) solo se vuoi sincronizzare più stampanti e location tra dispositivi.",
+            style = MaterialTheme.typography.bodySmall,
+            color = TextMuted,
+        )
+
+        val fieldColors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = AccentCyan,
+            unfocusedBorderColor = CardBorder,
+        )
+        OutlinedTextField(
+            value = emailInput,
+            onValueChange = { emailInput = it },
+            label = { Text("Email Account (opzionale)") },
+            singleLine = true,
+            shape = RoundedCornerShape(12.dp),
+            colors = fieldColors,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            value = nameInput,
+            onValueChange = { nameInput = it },
+            label = { Text("Nome Profilo") },
+            singleLine = true,
+            shape = RoundedCornerShape(12.dp),
+            colors = fieldColors,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            value = syncUrlInput,
+            onValueChange = { syncUrlInput = it },
+            label = { Text("URL Server Sync (opzionale, es. http://192.168.1.50:8086)") },
+            singleLine = true,
+            shape = RoundedCornerShape(12.dp),
+            colors = fieldColors,
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        ui.account.lastSyncedIso?.let { ts ->
+            Text("Ultimo backup/sync: $ts", style = MaterialTheme.typography.bodySmall, color = StatusGreen)
+        }
+
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            Button(
+                onClick = { viewModel.saveAccountSession(emailInput, nameInput, syncUrlInput) },
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.weight(1f).height(44.dp),
+            ) {
+                Text("Salva Profilo", maxLines = 1, softWrap = false)
+            }
+            if (ui.account.signedIn) {
+                OutlinedButton(
+                    onClick = { viewModel.signOutAccount() },
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, CardBorder),
+                    modifier = Modifier.weight(1f).height(44.dp),
+                ) {
+                    Text("Disconnetti", maxLines = 1, softWrap = false)
+                }
+            }
+        }
+
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            FilledTonalButton(
+                onClick = {
+                    val json = viewModel.exportSnapshotJson()
+                    clipboard.setText(AnnotatedString(json))
+                },
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.weight(1f).height(44.dp),
+            ) {
+                Text("Copia JSON", maxLines = 1, softWrap = false)
+            }
+            OutlinedButton(
+                onClick = { viewModel.syncWorkspaceToServer() },
+                shape = RoundedCornerShape(12.dp),
+                border = BorderStroke(1.dp, AccentCyan.copy(alpha = 0.45f)),
+                modifier = Modifier.weight(1f).height(44.dp),
+            ) {
+                Text("Sincronizza ora", color = AccentCyan, maxLines = 1, softWrap = false)
+            }
+        }
+    }
+
+    // 3. About & License Card
     ModernCard {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             NozzleGuardianLogo(size = 42.dp)
             Column {
                 Text("Nozzle Guardian", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-                Text("v1.2.1 • Driverless IPP / PWG-Raster", style = MaterialTheme.typography.bodySmall, color = AccentCyan)
+                Text("v1.3.0 • Driverless IPP / PWG-Raster", style = MaterialTheme.typography.bodySmall, color = AccentCyan)
             }
         }
         Text(
@@ -912,7 +1525,7 @@ private fun AboutLicenseTab() {
         Text("• Stampanti Wi-Fi: scoperta mDNS automatica + IPP/PWG-Raster/SNMP/EWS direttamente dal telefono.", style = MaterialTheme.typography.bodySmall)
         Text("• 4-Tank & 6-Tank Photo: supporta EcoTank standard (ET-2810, ET-4810) e Claria 6-Tank (ET-8550, L8180).", style = MaterialTheme.typography.bodySmall)
         Text("• Stampanti solo USB (es. Canon G2770): collega la stampante al PC con l'app Desktop 1-Click su Windows/macOS/Linux.", style = MaterialTheme.typography.bodySmall)
-        Text("• Privacy: Zero Telemetry, nessuna API cloud, nessuna raccolta dati.", style = MaterialTheme.typography.bodySmall)
+        Text("• Privacy: Zero Telemetry, nessuna raccolta dati senza il tuo consenso.", style = MaterialTheme.typography.bodySmall)
         Text("• Licenza Software: AGPL-3.0-only • Copyright © 2026 Umberto (umbette).", style = MaterialTheme.typography.bodySmall, color = TextMuted)
         OutlinedButton(
             onClick = {
@@ -926,4 +1539,163 @@ private fun AboutLicenseTab() {
             Text("Codice Sorgente & Guide su GitHub", color = AccentCyan)
         }
     }
+}
+
+@Composable
+private fun PaywallDialog(
+    feature: ProFeature,
+    ui: MainUiState,
+    viewModel: NozzleGuardianViewModel,
+    onDismiss: () -> Unit,
+) {
+    val activity = LocalContext.current as? Activity
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = CardSurface,
+        titleContentColor = TextPrimary,
+        textContentColor = TextPrimary,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ProBadge("PRO")
+                Text(feature.title, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(feature.description, style = MaterialTheme.typography.bodySmall, color = TextMuted)
+                Text("Con Nozzle Guardian Pro sblocchi:", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                Text("• Auto-spurgo automatico silenzioso in background", fontSize = 12.sp)
+                Text("• Scanner ottico fotocamera & target chirurgico AI", fontSize = 12.sp)
+                Text("• Multi-stampante & Location (Casa / Ufficio / Studio)", fontSize = 12.sp)
+                Text("• Sync & Backup configurazione tra dispositivi", fontSize = 12.sp)
+
+                if (ui.billing.offers.isNotEmpty() && activity != null) {
+                    ui.billing.offers.forEach { offer ->
+                        Button(
+                            onClick = { viewModel.launchProPurchase(activity, offer) },
+                            colors = ButtonDefaults.buttonColors(containerColor = ProGold, contentColor = Color(0xFF1F1200)),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("${offer.title} (${offer.formattedPrice})", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                } else if (!ui.entitlement.isPlayStoreInstall) {
+                    Button(
+                        onClick = { viewModel.setPreviewProEnabled(true) },
+                        colors = ButtonDefaults.buttonColors(containerColor = AccentCyan, contentColor = BgDeep),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Attiva Anteprima Pro (Test Sideload)", fontWeight = FontWeight.Bold)
+                    }
+                } else {
+                    Text(ui.billing.statusText, fontSize = 12.sp, color = AccentCyan)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Chiudi", color = TextMuted)
+            }
+        },
+    )
+}
+
+@Composable
+private fun AddLocationDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (name: String, wifiSsid: String) -> Unit,
+) {
+    var name by remember { mutableStateOf("") }
+    var ssid by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = CardSurface,
+        title = { Text("Nuova Casa / Location", color = TextPrimary) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Nome (es. Ufficio, Studio)") },
+                    singleLine = true,
+                )
+                OutlinedTextField(
+                    value = ssid,
+                    onValueChange = { ssid = it },
+                    label = { Text("Wi-Fi SSID (opzionale)") },
+                    singleLine = true,
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { if (name.isNotBlank()) onConfirm(name, ssid) },
+                enabled = name.isNotBlank(),
+            ) {
+                Text("Aggiungi")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Annulla", color = TextMuted) }
+        },
+    )
+}
+
+@Composable
+private fun AddPrinterDialog(
+    locationName: String,
+    onDismiss: () -> Unit,
+    onConfirm: (name: String, host: String, port: Int, useTls: Boolean) -> Unit,
+) {
+    var name by remember { mutableStateOf("") }
+    var host by remember { mutableStateOf("") }
+    var port by remember { mutableStateOf("631") }
+    var useTls by remember { mutableStateOf(true) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = CardSurface,
+        title = { Text("Nuova Stampante in $locationName", color = TextPrimary) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Modello / Nome (es. Epson ET-8550)") },
+                    singleLine = true,
+                )
+                OutlinedTextField(
+                    value = host,
+                    onValueChange = { host = it },
+                    label = { Text("IP / Hostname (es. 192.168.1.181)") },
+                    singleLine = true,
+                )
+                OutlinedTextField(
+                    value = port,
+                    onValueChange = { port = it.filter { ch -> ch.isDigit() } },
+                    label = { Text("Porta IPP (631)") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                )
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Text("Usa IPPS (TLS)", color = TextPrimary, modifier = Modifier.weight(1f))
+                    Switch(checked = useTls, onCheckedChange = { useTls = it })
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (host.isNotBlank()) {
+                        onConfirm(name, host, port.toIntOrNull() ?: 631, useTls)
+                    }
+                },
+                enabled = host.isNotBlank(),
+            ) {
+                Text("Salva")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Annulla", color = TextMuted) }
+        },
+    )
 }
