@@ -501,21 +501,37 @@ async def scan_nozzle_sheet(
     return report
 
 
+LOGO_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" width="108" height="108">
+  <rect width="108" height="108" rx="22" fill="#0B1120"/>
+  <path d="M54,14 L84,26 V53 C84,72 70,86 54,93 C38,86 24,72 24,53 V26 Z" fill="#18263D" stroke="#38BDF8" stroke-width="3.5" stroke-linejoin="round"/>
+  <rect x="33" y="36" width="42" height="6" rx="3" fill="#06B6D4"/>
+  <rect x="33" y="45" width="42" height="6" rx="3" fill="#EC4899"/>
+  <rect x="33" y="54" width="42" height="6" rx="3" fill="#EAB308"/>
+  <rect x="38" y="63" width="32" height="6" rx="3" fill="#F8FAFC"/>
+</svg>"""
+
+
+@app.get("/logo.svg")
+async def pwa_logo_svg():
+    """Returns the unified Nozzle Guardian Shield + CMYK SVG logo."""
+    return Response(content=LOGO_SVG, media_type="image/svg+xml")
+
+
 @app.get("/manifest.json")
 async def pwa_manifest():
     """Returns standard PWA manifest for Add to Home Screen on mobile/desktop."""
     return JSONResponse(content={
-        "name": "Nozzle Guardian™",
+        "name": "Nozzle Guardian",
         "short_name": "NozzleGuardian",
         "start_url": "./",
         "display": "standalone",
-        "background_color": "#0f172a",
-        "theme_color": "#0f172a",
+        "background_color": "#0b1120",
+        "theme_color": "#0b1120",
         "description": "Controllo, telemetria e diagnosi ottica ugelli stampante",
         "icons": [
             {
-                "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🖨️</text></svg>",
-                "sizes": "192x192 512x512",
+                "src": "./logo.svg",
+                "sizes": "any",
                 "type": "image/svg+xml"
             }
         ]
@@ -544,11 +560,12 @@ HTML_DASHBOARD_TEMPLATE = """<!DOCTYPE html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#0f172a">
+  <meta name="theme-color" content="#0b1120">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="icon" type="image/svg+xml" href="./logo.svg">
   <link rel="manifest" href="./manifest.json">
-  <title>Nozzle Guardian™ — Controllo & Diagnostica Ugelli</title>
+  <title>Nozzle Guardian — Controllo & Diagnostica Ugelli</title>
   <style>
     :root {
       --bg: #0f172a;
@@ -600,7 +617,18 @@ HTML_DASHBOARD_TEMPLATE = """<!DOCTYPE html>
 <body>
   <div class="container">
     <header>
-      <h1>🖨️ Nozzle Guardian™ <span style="font-size: 0.8rem; color: var(--primary);">v1.2</span></h1>
+      <h1>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" width="32" height="32" style="flex-shrink:0;">
+          <rect width="108" height="108" rx="22" fill="#0B1120"/>
+          <path d="M54,14 L84,26 V53 C84,72 70,86 54,93 C38,86 24,72 24,53 V26 Z" fill="#18263D" stroke="#38BDF8" stroke-width="3.5" stroke-linejoin="round"/>
+          <rect x="33" y="36" width="42" height="6" rx="3" fill="#06B6D4"/>
+          <rect x="33" y="45" width="42" height="6" rx="3" fill="#EC4899"/>
+          <rect x="33" y="54" width="42" height="6" rx="3" fill="#EAB308"/>
+          <rect x="38" y="63" width="32" height="6" rx="3" fill="#F8FAFC"/>
+        </svg>
+        Nozzle Guardian
+        <span style="font-size: 0.72rem; color: var(--primary); background: rgba(56,189,248,0.14); border: 1px solid rgba(56,189,248,0.35); padding: 2px 8px; border-radius: 999px;">v1.2.1</span>
+      </h1>
       <span id="printerStatusBadge" class="badge badge-offline">Caricamento...</span>
     </header>
 

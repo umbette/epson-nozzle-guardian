@@ -85,12 +85,14 @@ def run_desktop(
             import pystray  # type: ignore
             from PIL import Image, ImageDraw
 
-            img = Image.new("RGB", (64, 64), (15, 23, 42))
+            img = Image.new("RGBA", (64, 64), (11, 17, 32, 255))
             draw = ImageDraw.Draw(img)
-            draw.rounded_rectangle([8, 8, 56, 56], radius=12, outline=(56, 189, 248), width=4)
-            draw.rectangle([16, 22, 48, 28], fill=(6, 182, 212))
-            draw.rectangle([16, 31, 48, 37], fill=(236, 72, 153))
-            draw.rectangle([16, 40, 48, 46], fill=(234, 179, 8))
+            shield_pts = [(32, 8), (52, 16), (52, 34), (48, 44), (41, 52), (32, 57), (23, 52), (16, 44), (12, 34), (12, 16)]
+            draw.polygon(shield_pts, fill=(24, 38, 61, 255), outline=(56, 189, 248, 255), width=3)
+            draw.rounded_rectangle([19, 22, 45, 26], radius=2, fill=(6, 182, 212, 255))
+            draw.rounded_rectangle([19, 28, 45, 32], radius=2, fill=(236, 72, 153, 255))
+            draw.rounded_rectangle([19, 34, 45, 38], radius=2, fill=(234, 179, 8, 255))
+            draw.rounded_rectangle([22, 40, 42, 44], radius=2, fill=(248, 250, 252, 255))
 
             server_cfg = uvicorn.Config(app, host=host, port=port, log_level="info")
             server = uvicorn.Server(server_cfg)

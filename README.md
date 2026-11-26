@@ -1,4 +1,8 @@
-# Nozzle Guardian™
+<p align="center">
+  <img src="docs/assets/logo.svg" alt="Nozzle Guardian Logo" width="84">
+</p>
+
+<h1 align="center">Nozzle Guardian</h1>
 
 [![CI Test Suite](https://github.com/umbette/nozzle-guardian/actions/workflows/ci.yml/badge.svg)](https://github.com/umbette/nozzle-guardian/actions/workflows/ci.yml)
 [![Desktop Apps](https://github.com/umbette/nozzle-guardian/actions/workflows/build-desktop.yml/badge.svg)](https://github.com/umbette/nozzle-guardian/actions/workflows/build-desktop.yml)

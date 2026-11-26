@@ -86,6 +86,10 @@ def test_web_ui_endpoint():
     assert resp_manifest.status_code == 200
     assert resp_manifest.json()["display"] == "standalone"
 
+    resp_logo = client.get("/logo.svg")
+    assert resp_logo.status_code == 200
+    assert "<svg" in resp_logo.text
+
     resp_sw = client.get("/sw.js")
     assert resp_sw.status_code == 200
     assert "addEventListener" in resp_sw.text

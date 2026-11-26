@@ -33,7 +33,10 @@ a = Analysis(
     [os.path.join(SPECPATH, "desktop_entry.py")],
     pathex=[repo_root],
     binaries=[],
-    datas=[(os.path.join(repo_root, "config.example.yaml"), ".")],
+    datas=[
+        (os.path.join(repo_root, "config.example.yaml"), "."),
+        (os.path.join(SPECPATH, "icon.png"), "packaging"),
+    ],
     hiddenimports=hiddenimports,
     hookspath=[],
     runtime_hooks=[],
@@ -52,6 +55,7 @@ if sys.platform == "darwin":
         [],
         exclude_binaries=True,
         name="NozzleGuardian",
+        icon=os.path.join(SPECPATH, "icon.icns"),
         debug=False,
         bootloader_ignore_signals=False,
         strip=False,
@@ -70,9 +74,11 @@ if sys.platform == "darwin":
     app = BUNDLE(
         coll,
         name="NozzleGuardian.app",
+        icon=os.path.join(SPECPATH, "icon.icns"),
         bundle_identifier="com.umbette.nozzleguardian",
     )
 else:
+    win_or_linux_icon = os.path.join(SPECPATH, "icon.ico" if sys.platform == "win32" else "icon.png")
     exe = EXE(
         pyz,
         a.scripts,
@@ -81,6 +87,7 @@ else:
         a.datas,
         [],
         name="NozzleGuardian",
+        icon=win_or_linux_icon,
         debug=False,
         bootloader_ignore_signals=False,
         strip=False,
