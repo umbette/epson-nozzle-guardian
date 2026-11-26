@@ -182,6 +182,9 @@ class StateStore(private val context: Context) {
         lastModel = prefs.getString("last_model", null),
         lastPrinterKind = enumValueOr(prefs.getString("last_printer_kind", null), PrinterKind.INKJET),
         lastHeadTechnology = enumValueOr(prefs.getString("last_head_technology", null), HeadTechnology.PIEZO),
+        microPurgesCount = prefs.getInt("micro_purges_count", 0),
+        surgicalCleansCount = prefs.getInt("surgical_cleans_count", 0),
+        surgicalNozzlesTargeted = prefs.getInt("surgical_nozzles_targeted", 0),
     )
 
     private fun saveLegacySingleState(state: GuardianState) {
@@ -207,6 +210,9 @@ class StateStore(private val context: Context) {
             putNullableString("last_model", state.lastModel)
             putString("last_printer_kind", state.lastPrinterKind.name)
             putString("last_head_technology", state.lastHeadTechnology.name)
+            putInt("micro_purges_count", state.microPurgesCount)
+            putInt("surgical_cleans_count", state.surgicalCleansCount)
+            putInt("surgical_nozzles_targeted", state.surgicalNozzlesTargeted)
             apply()
         }
     }
@@ -304,6 +310,9 @@ class StateStore(private val context: Context) {
         put("lastModel", s.lastModel ?: JSONObject.NULL)
         put("lastPrinterKind", s.lastPrinterKind.name)
         put("lastHeadTechnology", s.lastHeadTechnology.name)
+        put("microPurgesCount", s.microPurgesCount)
+        put("surgicalCleansCount", s.surgicalCleansCount)
+        put("surgicalNozzlesTargeted", s.surgicalNozzlesTargeted)
     }
 
     private fun parseGuardianState(o: JSONObject): GuardianState = GuardianState(
@@ -328,6 +337,9 @@ class StateStore(private val context: Context) {
         lastModel = if (o.isNull("lastModel")) null else o.optString("lastModel", "").ifBlank { null },
         lastPrinterKind = enumValueOr(o.optString("lastPrinterKind", ""), PrinterKind.INKJET),
         lastHeadTechnology = enumValueOr(o.optString("lastHeadTechnology", ""), HeadTechnology.PIEZO),
+        microPurgesCount = o.optInt("microPurgesCount", 0),
+        surgicalCleansCount = o.optInt("surgicalCleansCount", 0),
+        surgicalNozzlesTargeted = o.optInt("surgicalNozzlesTargeted", 0),
     )
 
     private fun android.content.SharedPreferences.Editor.putNullableInt(key: String, value: Int?) {

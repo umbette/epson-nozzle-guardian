@@ -68,4 +68,11 @@
     <string name="banner_low_ink">Encre faible sur %1$s : %2$s.</string>
     <string name="notif_low_ink_title">Nozzle Guardian : Encre Faible</string>
     <string name="notif_low_ink_body">%1$s bientôt vide : %2$s.</string>
+    <string name="savings_printer_title">Économie d\'Encre Estimée</string>
+    <string name="savings_total_title">Économie Totale d\'Encre</string>
+    <string name="savings_saved_label">Économisé</string>
+    <string name="savings_used_label">Utilisé</string>
+    <string name="savings_actions_label">Cycles</string>
+    <string name="savings_breakdown">Micro-purges : %1$d  •  Chirurgicales : %2$d (%3$d buses)</string>
+    <string name="savings_formula_note">Estimation : ~0,006 ml par micro-purge (~0,002 ml/buse) vs ~3 ml nettoyage standard (8–15 ml Power Clean). Zéro encre vers le tampon interne.</string>
 </resources>

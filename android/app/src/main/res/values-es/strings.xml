@@ -120,4 +120,11 @@
     <string name="banner_low_ink">Tinta baja en %1$s: %2$s.</string>
     <string name="notif_low_ink_title">Nozzle Guardian: Tinta Baja</string>
     <string name="notif_low_ink_body">%1$s con poca tinta: %2$s.</string>
+    <string name="savings_printer_title">Ahorro Estimado de Tinta</string>
+    <string name="savings_total_title">Ahorro Total de Tinta</string>
+    <string name="savings_saved_label">Ahorrado</string>
+    <string name="savings_used_label">Usado</string>
+    <string name="savings_actions_label">Ciclos</string>
+    <string name="savings_breakdown">Micro-purgas: %1$d  •  Quirúrgicas: %2$d (%3$d boquillas)</string>
+    <string name="savings_formula_note">Estimación: ~0,006 ml por micro-purga (~0,002 ml/boquilla) frente a ~3 ml limpieza estándar (8–15 ml Power Clean). Cero tinta al depósito interno.</string>
 </resources>

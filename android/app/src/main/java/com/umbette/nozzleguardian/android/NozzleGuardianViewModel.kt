@@ -573,9 +573,18 @@ class NozzleGuardianViewModel(application: Application) : AndroidViewModel(appli
             }
             val cachedStatus = _uiState.value.printerStatuses[target.id]
             val outcome = client.dispatchSurgicalBatchPurge(cfg.printerHost, cfg.printerPort, targets, bursts, cachedStatus, cfg)
-            sendTelemetryIfOptIn(target, cachedStatus, cfg, "surgical_batch_${targets.size}", outcome.success)
+            var nextWs = store.loadWorkspace()
+            var finalState = cfg
+            if (outcome.success) {
+                finalState = DormancyEngine.markSurgicalExecuted(cfg, targets.size)
+                val updatedTarget = target.copy(state = finalState)
+                nextWs = WorkspaceEngine.upsertPrinter(nextWs, updatedTarget, setActive = (nextWs.activePrinterId == target.id))
+                store.saveWorkspace(nextWs)
+            }
+            sendTelemetryIfOptIn(target, cachedStatus, finalState, "surgical_batch_${targets.size}", outcome.success)
             _uiState.update {
                 it.copy(
+                    workspace = nextWs,
                     isBusy = false,
                     banner = if (outcome.success) {
                         UiBanner(BannerSeverity.SUCCESS, R.string.banner_purge_ok, listOf(label))

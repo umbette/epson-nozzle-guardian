@@ -52,7 +52,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.umbette.nozzleguardian.BuildConfig
 import com.umbette.nozzleguardian.R
+import com.umbette.nozzleguardian.engine.PrinterKind
 import com.umbette.nozzleguardian.engine.ProFeature
+import com.umbette.nozzleguardian.engine.WorkspaceEngine
 
 @Composable
 fun AccountProScreen(ui: MainUiState, viewModel: NozzleGuardianViewModel) {
@@ -166,6 +168,14 @@ fun AccountProScreen(ui: MainUiState, viewModel: NozzleGuardianViewModel) {
                 Text(stringResource(R.string.pro_restore_purchases))
             }
         }
+    }
+
+    // 1b. Quantified Ink Savings across all Inkjet Printers
+    if (ui.workspace.printers.any { it.state.lastPrinterKind != PrinterKind.LASER }) {
+        InkSavingsCard(
+            estimate = WorkspaceEngine.aggregateInkSavings(ui.workspace),
+            title = stringResource(R.string.savings_total_title),
+        )
     }
 
     // 2. Opt-In Telemetry ("Help us improve")

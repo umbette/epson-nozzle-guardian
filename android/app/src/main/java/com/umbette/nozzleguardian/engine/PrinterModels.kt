@@ -141,7 +141,58 @@ data class GuardianState(
     val lastModel: String? = null,
     val lastPrinterKind: PrinterKind = PrinterKind.INKJET,
     val lastHeadTechnology: HeadTechnology = HeadTechnology.PIEZO,
+    val microPurgesCount: Int = 0,
+    val surgicalCleansCount: Int = 0,
+    val surgicalNozzlesTargeted: Int = 0,
 )
+
+data class InkSavingsEstimate(
+    val microPurgesCount: Int,
+    val surgicalCleansCount: Int,
+    val surgicalNozzlesTargeted: Int,
+    val usedMl: Double,
+    val estimatedSavedMl: Double,
+    val avoidedStandardCleans: Double,
+    val avoidedDeepCleans: Double,
+) {
+    val totalInterventions: Int
+        get() = microPurgesCount + surgicalCleansCount
+}
+
+object InkSavingsCalculator {
+    const val MICRO_PURGE_INK_ML = 0.006
+    const val SURGICAL_STEP_INK_ML = 0.002
+    const val AVOIDED_STANDARD_CLEAN_ML_PER_PURGE = 1.5
+    const val AVOIDED_STANDARD_CLEAN_ML_PER_SURGICAL = 3.0
+    const val STANDARD_HEAD_CLEAN_ML = 3.0
+    const val FACTORY_DEEP_CLEAN_ML = 10.0
+
+    fun estimate(
+        microPurgesCount: Int,
+        surgicalCleansCount: Int,
+        surgicalNozzlesTargeted: Int,
+    ): InkSavingsEstimate {
+        val purges = microPurgesCount.coerceAtLeast(0)
+        val surgical = surgicalCleansCount.coerceAtLeast(0)
+        val steps = surgicalNozzlesTargeted.coerceAtLeast(surgical)
+        val used = purges * MICRO_PURGE_INK_ML + steps * SURGICAL_STEP_INK_ML
+        val grossAvoided = purges * AVOIDED_STANDARD_CLEAN_ML_PER_PURGE +
+            surgical * AVOIDED_STANDARD_CLEAN_ML_PER_SURGICAL
+        val saved = (grossAvoided - used).coerceAtLeast(0.0)
+        return InkSavingsEstimate(
+            microPurgesCount = purges,
+            surgicalCleansCount = surgical,
+            surgicalNozzlesTargeted = if (surgical == 0) 0 else steps,
+            usedMl = used,
+            estimatedSavedMl = saved,
+            avoidedStandardCleans = saved / STANDARD_HEAD_CLEAN_ML,
+            avoidedDeepCleans = saved / FACTORY_DEEP_CLEAN_ML,
+        )
+    }
+
+    fun estimate(state: GuardianState): InkSavingsEstimate =
+        estimate(state.microPurgesCount, state.surgicalCleansCount, state.surgicalNozzlesTargeted)
+}
 
 enum class DormancyDecisionType {
     UNCONFIGURED,

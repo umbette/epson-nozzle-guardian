@@ -9,6 +9,7 @@ import com.umbette.nozzleguardian.engine.EntitlementState
 import com.umbette.nozzleguardian.engine.EwsParser
 import com.umbette.nozzleguardian.engine.GuardianState
 import com.umbette.nozzleguardian.engine.HeadTechnology
+import com.umbette.nozzleguardian.engine.InkSavingsCalculator
 import com.umbette.nozzleguardian.engine.IppCodec
 import com.umbette.nozzleguardian.engine.LocationGroup
 import com.umbette.nozzleguardian.engine.MarkerSupply
@@ -315,6 +316,42 @@ class EngineUnitTests {
         """.trimIndent()
         val parsedXml = EwsParser.parseConsumablesXml(hpXml)
         assertEquals(listOf("Black" to 70, "Yellow" to 10), parsedXml.map { it.name to it.level })
+    }
+
+    @Test
+    fun inkSavingsTracksPurgesAndSurgicalCleansAndExcludesLasers() {
+        var st = GuardianState(printerHost = "192.168.1.181")
+        st = DormancyEngine.markPurgeExecuted(st, PurgeMode.CMYK)
+        st = DormancyEngine.markPurgeExecuted(st, PurgeMode.K)
+        st = DormancyEngine.markSurgicalExecuted(st, targetedCount = 3)
+        assertEquals(2, st.microPurgesCount)
+        assertEquals(1, st.surgicalCleansCount)
+        assertEquals(3, st.surgicalNozzlesTargeted)
+
+        val est = InkSavingsCalculator.estimate(st)
+        assertEquals(3, est.totalInterventions)
+        assertEquals(0.018, est.usedMl, 0.0001)
+        assertEquals(5.982, est.estimatedSavedMl, 0.001)
+
+        val ws = MultiPrinterWorkspace(
+            printers = listOf(
+                PrinterProfile(id = "ink1", locationId = "loc_home", displayName = "ET-2810", state = st),
+                PrinterProfile(
+                    id = "las1",
+                    locationId = "loc_home",
+                    displayName = "LaserJet",
+                    state = GuardianState(
+                        printerHost = "192.168.1.200",
+                        lastPrinterKind = PrinterKind.LASER,
+                        microPurgesCount = 99,
+                    ),
+                ),
+            ),
+        )
+        val total = WorkspaceEngine.aggregateInkSavings(ws)
+        assertEquals(2, total.microPurgesCount)
+        assertEquals(1, total.surgicalCleansCount)
+        assertEquals(5.982, total.estimatedSavedMl, 0.001)
     }
 
     @Test

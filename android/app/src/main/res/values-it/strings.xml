@@ -249,4 +249,12 @@
     <string name="banner_low_ink">Inchiostro basso su %1$s: %2$s.</string>
     <string name="notif_low_ink_title">Nozzle Guardian: Inchiostro Basso</string>
     <string name="notif_low_ink_body">%1$s quasi esaurito: %2$s.</string>
+
+    <string name="savings_printer_title">Risparmio Inchiostro Stimato</string>
+    <string name="savings_total_title">Risparmio Totale Inchiostro</string>
+    <string name="savings_saved_label">Risparmiati</string>
+    <string name="savings_used_label">Usato</string>
+    <string name="savings_actions_label">Interventi</string>
+    <string name="savings_breakdown">Micro-spurghi: %1$d  •  Pulizie chirurgiche: %2$d (%3$d ugelli mirati)</string>
+    <string name="savings_formula_note">Stima su ~0,006 ml a micro-spurgo (~0,002 ml/ugello chirurgico) contro ~3 ml pulizia standard (8–15 ml Power Clean). Zero inchiostro nello scarico interno.</string>
 </resources>

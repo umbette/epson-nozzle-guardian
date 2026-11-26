@@ -249,4 +249,12 @@
     <string name="banner_low_ink">Low ink on %1$s: %2$s.</string>
     <string name="notif_low_ink_title">Nozzle Guardian: Low Ink</string>
     <string name="notif_low_ink_body">%1$s running low: %2$s.</string>
+
+    <string name="savings_printer_title">Estimated Ink Savings</string>
+    <string name="savings_total_title">Total Ink Savings</string>
+    <string name="savings_saved_label">Est. Saved</string>
+    <string name="savings_used_label">Ink Used</string>
+    <string name="savings_actions_label">Cleans</string>
+    <string name="savings_breakdown">Micro-purges: %1$d  •  Surgical cleans: %2$d (%3$d nozzles targeted)</string>
+    <string name="savings_formula_note">Based on ~0.006 ml per micro-purge (~0.002 ml/nozzle surgical) vs ~3 ml standard head clean (8–15 ml Power Clean). Zero ink wasted into internal sponge.</string>
 </resources>

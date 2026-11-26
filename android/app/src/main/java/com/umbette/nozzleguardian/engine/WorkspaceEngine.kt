@@ -163,4 +163,13 @@ object WorkspaceEngine {
         }
         return profile.copy(displayName = nextName, brand = brand, silhouette = silhouette)
     }
+
+    fun aggregateInkSavings(workspace: MultiPrinterWorkspace): InkSavingsEstimate {
+        val inkPrinters = workspace.printers.filter { it.state.lastPrinterKind != PrinterKind.LASER }
+        return InkSavingsCalculator.estimate(
+            microPurgesCount = inkPrinters.sumOf { it.state.microPurgesCount },
+            surgicalCleansCount = inkPrinters.sumOf { it.state.surgicalCleansCount },
+            surgicalNozzlesTargeted = inkPrinters.sumOf { it.state.surgicalNozzlesTargeted },
+        )
+    }
 }

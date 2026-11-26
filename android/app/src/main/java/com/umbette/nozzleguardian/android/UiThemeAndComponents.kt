@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Opacity
 import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Card
@@ -72,10 +73,12 @@ import androidx.compose.ui.unit.sp
 import com.umbette.nozzleguardian.R
 import com.umbette.nozzleguardian.engine.BrandBadge
 import com.umbette.nozzleguardian.engine.HeadTechnology
+import com.umbette.nozzleguardian.engine.InkSavingsEstimate
 import com.umbette.nozzleguardian.engine.MarkerSupply
 import com.umbette.nozzleguardian.engine.NozzleChannel
 import com.umbette.nozzleguardian.engine.PrinterSilhouette
 import com.umbette.nozzleguardian.engine.ProFeature
+import java.util.Locale
 
 val BgDeep = Color(0xFF0B1120)
 val CardSurface = Color(0xFF151F32)
@@ -465,8 +468,7 @@ fun InkTankBar(marker: MarkerSupply, modifier: Modifier = Modifier) {
     val isDarkSwatch = (barColor.red + barColor.green + barColor.blue) < 0.6f
     val shortName = shortMarkerLabel(marker.name)
     val lvlStr = "$safeLevel%"
-    val fillFrac = if (safeLevel == 0) 0f else (safeLevel / 100f).coerceAtLeast(0.05f)
-    val trackBorder = if (isDarkSwatch) Color(0xFF475569) else barColor.copy(alpha = 0.45f)
+    val trackBorder = if (isDarkSwatch) Color(0xFF475569) else barColor.copy(alpha = 0.55f)
     val levelColor = when {
         safeLevel == 0 -> StatusRed
         safeLevel <= 15 -> StatusAmber
@@ -499,21 +501,56 @@ fun InkTankBar(marker: MarkerSupply, modifier: Modifier = Modifier) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(7.dp)
+                .height(8.dp)
                 .clip(RoundedCornerShape(50))
-                .background(BgDeep)
+                .background(barColor)
                 .border(0.8.dp, trackBorder, RoundedCornerShape(50)),
+        )
+    }
+}
+
+@Composable
+fun InkSavingsCard(
+    estimate: InkSavingsEstimate,
+    title: String,
+    modifier: Modifier = Modifier,
+) {
+    val savedText = String.format(Locale.US, "~%.1f ml", estimate.estimatedSavedMl)
+    val usedText = String.format(Locale.US, "%.3f ml", estimate.usedMl)
+    ModernCard(
+        modifier = modifier,
+        borderColor = StatusGreen.copy(alpha = 0.35f),
+        containerColor = CardSurface,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth(),
         ) {
-            if (fillFrac > 0f) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(fillFrac)
-                        .height(7.dp)
-                        .clip(RoundedCornerShape(50))
-                        .background(barColor),
-                )
-            }
+            Icon(Icons.Filled.Opacity, contentDescription = null, tint = StatusGreen, modifier = Modifier.size(18.dp))
+            Text(title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+            StatusBadge(label = savedText, color = StatusGreen)
         }
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            StatPill(stringResource(R.string.savings_saved_label), savedText, Modifier.weight(1f))
+            StatPill(stringResource(R.string.savings_used_label), usedText, Modifier.weight(1f))
+            StatPill(stringResource(R.string.savings_actions_label), estimate.totalInterventions.toString(), Modifier.weight(1f))
+        }
+        Text(
+            text = stringResource(
+                R.string.savings_breakdown,
+                estimate.microPurgesCount,
+                estimate.surgicalCleansCount,
+                estimate.surgicalNozzlesTargeted,
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            color = TextPrimary,
+        )
+        Text(
+            text = stringResource(R.string.savings_formula_note),
+            style = MaterialTheme.typography.bodySmall,
+            color = TextMuted,
+        )
     }
 }
 

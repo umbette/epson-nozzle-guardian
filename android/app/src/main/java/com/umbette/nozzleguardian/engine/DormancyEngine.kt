@@ -165,16 +165,32 @@ object DormancyEngine {
 
     fun markPurgeExecuted(state: GuardianState, mode: PurgeMode, now: Instant = Instant.now()): GuardianState {
         val nowIso = now.toString()
+        val nextCount = state.microPurgesCount + 1
         return when (mode) {
-            PurgeMode.K -> state.copy(lastMonoActivityIso = nowIso, lastMonoPurgeIso = nowIso)
-            PurgeMode.CMY, PurgeMode.PB_GY -> state.copy(lastColorActivityIso = nowIso, lastColorPurgeIso = nowIso)
+            PurgeMode.K -> state.copy(
+                lastMonoActivityIso = nowIso,
+                lastMonoPurgeIso = nowIso,
+                microPurgesCount = nextCount,
+            )
+            PurgeMode.CMY, PurgeMode.PB_GY -> state.copy(
+                lastColorActivityIso = nowIso,
+                lastColorPurgeIso = nowIso,
+                microPurgesCount = nextCount,
+            )
             PurgeMode.CMYK, PurgeMode.CMYK6 -> state.copy(
                 lastTotalActivityIso = nowIso,
                 lastMonoActivityIso = nowIso,
                 lastColorActivityIso = nowIso,
                 lastMonoPurgeIso = nowIso,
                 lastColorPurgeIso = nowIso,
+                microPurgesCount = nextCount,
             )
         }
     }
+
+    fun markSurgicalExecuted(state: GuardianState, targetedCount: Int): GuardianState =
+        state.copy(
+            surgicalCleansCount = state.surgicalCleansCount + 1,
+            surgicalNozzlesTargeted = state.surgicalNozzlesTargeted + targetedCount.coerceAtLeast(1),
+        )
 }

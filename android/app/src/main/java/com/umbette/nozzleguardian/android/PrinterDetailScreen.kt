@@ -59,6 +59,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.umbette.nozzleguardian.R
+import com.umbette.nozzleguardian.engine.InkSavingsCalculator
 import com.umbette.nozzleguardian.engine.PrinterClassification
 import com.umbette.nozzleguardian.engine.PrinterKind
 import com.umbette.nozzleguardian.engine.PrinterProfile
@@ -421,6 +422,12 @@ fun PrinterDetailScreen(
 
             // Step 2: Verify Printed Sheet (right below Step 1 in the SAME screen!)
             PrinterScannerSection(profile = profile, ui = ui, viewModel = viewModel)
+
+            // Quantified Ink Savings from micro-maintenance & surgical cleaning
+            InkSavingsCard(
+                estimate = InkSavingsCalculator.estimate(cfg),
+                title = stringResource(R.string.savings_printer_title),
+            )
         }
     } else {
         // Sub-Tab 1: Rules, Dormancy Threshold & Network Settings

@@ -68,4 +68,11 @@
     <string name="banner_low_ink">Niedriger Tintenstand bei %1$s: %2$s.</string>
     <string name="notif_low_ink_title">Nozzle Guardian: Tinte Niedrig</string>
     <string name="notif_low_ink_body">%1$s fast leer: %2$s.</string>
+    <string name="savings_printer_title">Geschätzte Tintenersparnis</string>
+    <string name="savings_total_title">Gesamte Tintenersparnis</string>
+    <string name="savings_saved_label">Gespart</string>
+    <string name="savings_used_label">Verbraucht</string>
+    <string name="savings_actions_label">Zyklen</string>
+    <string name="savings_breakdown">Mikro-Spülungen: %1$d  •  Chirurgisch: %2$d (%3$d Düsen)</string>
+    <string name="savings_formula_note">Basis: ~0,006 ml je Mikro-Spülung (~0,002 ml/Düse) statt ~3 ml Standardreinigung (8–15 ml Power Clean). Keine Tinte im Resttintenbehälter.</string>
 </resources>
