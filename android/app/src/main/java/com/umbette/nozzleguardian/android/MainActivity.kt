@@ -192,12 +192,20 @@ private fun PrinterControlTab(ui: MainUiState, viewModel: NozzleGuardianViewMode
 
     Card {
         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                Text("1. Stampante Wi-Fi (Zero Server)", fontWeight = FontWeight.SemiBold)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(
+                    "1. Stampante Wi-Fi (Zero Server)",
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
+                )
                 FilledTonalButton(onClick = { viewModel.discoverPrinters() }, enabled = !ui.isDiscovering) {
                     Icon(Icons.Filled.WifiFind, contentDescription = null)
                     Spacer(Modifier.width(6.dp))
-                    Text("Cerca mDNS")
+                    Text("Cerca mDNS", maxLines = 1, softWrap = false)
                 }
             }
 
@@ -209,10 +217,10 @@ private fun PrinterControlTab(ui: MainUiState, viewModel: NozzleGuardianViewMode
                         .background(MaterialTheme.colorScheme.surfaceVariant)
                         .clickable { viewModel.selectPrinter(dev) }
                         .padding(10.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(dev.makeAndModel, fontWeight = FontWeight.Medium)
                         Text("${dev.host}:${dev.port} • ${dev.headTechnology.label}", style = MaterialTheme.typography.bodySmall)
                     }
@@ -239,7 +247,7 @@ private fun PrinterControlTab(ui: MainUiState, viewModel: NozzleGuardianViewMode
             }
 
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                Text("Usa IPPS (TLS locale)", style = MaterialTheme.typography.bodyMedium)
+                Text("Usa IPPS (TLS locale)", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                 Switch(checked = useTls, onCheckedChange = { useTls = it })
             }
 
